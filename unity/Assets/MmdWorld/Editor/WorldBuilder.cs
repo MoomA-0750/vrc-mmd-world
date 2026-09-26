@@ -70,6 +70,9 @@ namespace MmdWorld.EditorTools
             Debug.Log($"[MmdWorld] 曲 {songs.Count} 件: {string.Join(", ", songs.Select(s => s.DisplayTitle))}");
 
             var stationControllers = songs.Select((s, i) => BuildStationController(s, i)).ToList();
+            // 曲が減ったときに、使われなくなった曲の Animator を残さない
+            for (int i = songs.Count; AssetDatabase.LoadAssetAtPath<Object>($"{GeneratedDir}/Station_Song{i}.controller") != null; i++)
+                AssetDatabase.DeleteAsset($"{GeneratedDir}/Station_Song{i}.controller");
             var previewController = BuildPreviewController(songs);
             var mannequinMaterial = LoadOrCreateMaterial(GeneratedDir + "/Mannequin.mat", new Color(0.85f, 0.85f, 0.9f));
             var mannequin = MannequinBuilder.BuildPrefab(GeneratedDir + "/Mannequin.prefab", GeneratedDir + "/MannequinAvatar.asset", mannequinMaterial);

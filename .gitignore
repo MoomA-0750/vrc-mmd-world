@@ -1,0 +1,28 @@
+# Unity が作るもの
+unity/[Ll]ibrary/
+unity/[Tt]emp/
+unity/[Ll]ogs/
+unity/[Uu]ser[Ss]ettings/
+unity/[Oo]bj/
+unity/[Bb]uild/
+unity/[Bb]uilds/
+unity/*.csproj
+unity/*.sln
+unity/.vs/
+unity/.vscode/
+unity/crashlogs/
+unity/Assets/SceneDependencyCache*
+# VPM のパッケージは vpm-manifest.json から vrc-get resolve で入れ直す
+unity/Packages/com.vrchat.*/
+# テストや batchmode の出力
+out/
+# ClientSim が Play モードで書く保存データ
+unity/ClientSimStorage/
+# 手元で試すだけのもの（購入したアバターなど。再配布できないのでリポジトリに入れない）
+unity/Assets/LocalOnly/
+unity/Assets/LocalOnly.meta
+# 機械ごとの設定
+scripts/win.env
+# VRChat SDK が最初に置くサンプルのシーン（使っていない。VRChat の素材なのでリポジトリに入れない）
+unity/Assets/Scenes/
+unity/Assets/Scenes.meta

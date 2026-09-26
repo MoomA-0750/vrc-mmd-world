@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: a4e99c6e346795e45ae13c0c9441ab03
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 5fead8bd1281f6042b8143bd4ee6fecb, type: 3}
+  armAngle: 35
+  scale: 0.08
+  importMorphs: 1
+  faceMeshPath: Body

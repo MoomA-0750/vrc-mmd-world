@@ -18,6 +18,7 @@ namespace MmdWorld.EditorTools
     ///   PlayCheckDance    Play モードで枠に入って再生する確認
     ///   BuildAndTest      VRChat SDK の Build &amp; Test（VR ではなくデスクトップで1つ起動する）
     ///   BuildAndTestAuto  同上。クライアントを2つ起動し、先に入った方が12秒後に枠1に入って再生する（そのビルドだけ）。後の方は客席から見る
+    ///   OpenManager       マネージャーのウィンドウを開く
     ///   Refresh           AssetDatabase.Refresh
     /// </summary>
     [InitializeOnLoad]
@@ -58,6 +59,9 @@ namespace MmdWorld.EditorTools
                         break;
                     case "BuildAndTestAuto":
                         BuildAndTest(true);
+                        break;
+                    case "OpenManager":
+                        MmdWorldManagerWindow.Open();
                         break;
                     case "Refresh":
                         AssetDatabase.Refresh();

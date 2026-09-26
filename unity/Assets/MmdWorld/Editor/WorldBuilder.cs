@@ -26,7 +26,8 @@ namespace MmdWorld.EditorTools
         const string GeneratedDir = RootDir + "/Generated";
         const string ScriptsDir = RootDir + "/Scripts";
         public const string ScenePath = RootDir + "/Scenes/MmdWorld.unity";
-        const int SlotCount = 4;
+        const float SlotSpacing = 1.6f;
+        static int _slotCount;
 
         static Font _font;
 
@@ -62,12 +63,10 @@ namespace MmdWorld.EditorTools
             EnsureProgramAsset<DanceSlot>();
             EnsureProgramAsset<DanceButton>();
 
+            var settings = MmdWorldSettings.LoadOrCreate();
+            _slotCount = Mathf.Clamp(settings.slotCount, 1, 16);
             CreateMissingSongs();
-            var songs = AssetDatabase.FindAssets("t:" + nameof(DanceSong))
-                .Select(g => AssetDatabase.LoadAssetAtPath<DanceSong>(AssetDatabase.GUIDToAssetPath(g)))
-                .Where(s => s != null && s.motion != null)
-                .OrderBy(s => s.order).ThenBy(s => s.name)
-                .ToList();
+            var songs = MmdWorldLibrary.Songs();
             Debug.Log($"[MmdWorld] 曲 {songs.Count} 件: {string.Join(", ", songs.Select(s => s.DisplayTitle))}");
 
             var stationControllers = songs.Select((s, i) => BuildStationController(s, i)).ToList();
@@ -76,7 +75,9 @@ namespace MmdWorld.EditorTools
             var mannequin = MannequinBuilder.BuildPrefab(GeneratedDir + "/Mannequin.prefab", GeneratedDir + "/MannequinAvatar.asset", mannequinMaterial);
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            BuildEnvironment();
+            float stageWidth = Mathf.Max(9f, _slotCount * SlotSpacing + 2.6f);
+            BuildEnvironment(stageWidth);
+            BuildPedestals(settings.pedestalAvatarIds, stageWidth);
 
             var systemGo = new GameObject("DanceSystem");
             var audio = systemGo.AddComponent<AudioSource>();
@@ -85,14 +86,10 @@ namespace MmdWorld.EditorTools
             var system = UdonSharpUndo.AddComponent<DanceSystem>(systemGo);
 
             var slots = new List<DanceSlot>();
-            for (int i = 0; i < SlotCount; i++)
+            for (int i = 0; i < _slotCount; i++)
                 slots.Add(BuildSlot(i, system, stationControllers));
 
-            var preview = (GameObject)PrefabUtility.InstantiatePrefab(mannequin);
-            preview.name = "お手本";
-            preview.transform.SetPositionAndRotation(new Vector3(3.6f, 0f, 4.5f), Quaternion.Euler(0f, 180f, 0f));
-            var previewAnimator = preview.GetComponent<Animator>();
-            previewAnimator.runtimeAnimatorController = previewController;
+            var previewAnimators = BuildPreviewDancers(settings.previewDancers, mannequin, previewController, stageWidth);
 
             var (title, status) = BuildPanel(system);
 
@@ -102,7 +99,8 @@ namespace MmdWorld.EditorTools
             system.audioOffsets = songs.Select(s => s.audioOffset).ToArray();
             system.slots = slots.ToArray();
             system.audioSource = audio;
-            system.previewDancers = new[] { previewAnimator };
+            system.previewDancers = previewAnimators.ToArray();
+            system.countdownSeconds = settings.countdownSeconds;
             system.titleText = title;
             system.statusText = status;
             UdonSharpEditorUtility.CopyProxyToUdon(system);
@@ -188,9 +186,69 @@ namespace MmdWorld.EditorTools
             return controller;
         }
 
+        // ---- お手本・着替えの台 ----
+
+        /// <summary>
+        /// お手本を舞台の右端から外側へ並べる。設定に Humanoid のモデルが無ければ付属の人形を1体置く。
+        /// Humanoid でないモデルは飛ばす（Animator の Avatar が Humanoid でないと踊れない）。
+        /// </summary>
+        static List<Animator> BuildPreviewDancers(List<GameObject> models, GameObject mannequin, RuntimeAnimatorController controller, float stageWidth)
+        {
+            var usable = models.Where(m => m != null && IsHumanoid(m)).ToList();
+            foreach (var m in models.Where(m => m != null && !IsHumanoid(m)))
+                Debug.LogWarning($"[MmdWorld] お手本の {m.name} は Humanoid ではないので置かない");
+            if (usable.Count == 0) usable.Add(mannequin);
+
+            var animators = new List<Animator>();
+            for (int i = 0; i < usable.Count; i++)
+            {
+                var go = (GameObject)PrefabUtility.InstantiatePrefab(usable[i]);
+                go.name = "お手本" + (usable.Count > 1 ? (i + 1).ToString() : "") + "_" + usable[i].name;
+                float x = stageWidth * 0.5f - 0.9f - i * 1.0f;
+                // 枠と重ならないよう、舞台の奥の列に並べる
+                go.transform.SetPositionAndRotation(new Vector3(x, 0f, 6.2f), Quaternion.Euler(0f, 180f, 0f));
+                var animator = go.GetComponent<Animator>();
+                animator.runtimeAnimatorController = controller;
+                animator.applyRootMotion = false;
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                animators.Add(animator);
+            }
+            return animators;
+        }
+
+        static bool IsHumanoid(GameObject model)
+        {
+            var animator = model.GetComponent<Animator>();
+            return animator != null && animator.avatar != null && animator.avatar.isHuman;
+        }
+
+        /// <summary>着替えの台を、舞台の左の外に客席へ向けて並べる。形の正しくない ID は飛ばす。</summary>
+        static void BuildPedestals(List<string> avatarIds, float stageWidth)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Packages/com.vrchat.worlds/Samples/UdonExampleScene/Prefabs/AvatarPedestal.prefab");
+            int n = 0;
+            foreach (string raw in avatarIds)
+            {
+                string id = raw?.Trim();
+                if (!MmdWorldLibrary.IsValidAvatarId(id))
+                {
+                    if (!string.IsNullOrEmpty(id)) Debug.LogWarning("[MmdWorld] アバター ID の形が違うので台を置かない: " + id);
+                    continue;
+                }
+                var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                go.name = "着替え_" + id;
+                go.transform.SetPositionAndRotation(new Vector3(-stageWidth * 0.5f - 1.5f, 0f, 4.5f - n * 1.4f), Quaternion.Euler(0f, 90f, 0f));
+                var pedestal = go.GetComponentInChildren<VRCAvatarPedestal>();
+                var so = new SerializedObject(pedestal);
+                so.FindProperty("blueprintId").stringValue = id;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                n++;
+            }
+        }
+
         // ---- シーンの部品 ----
 
-        static void BuildEnvironment()
+        static void BuildEnvironment(float stageWidth)
         {
             var light = new GameObject("Directional Light").AddComponent<Light>();
             light.type = LightType.Directional;
@@ -206,7 +264,7 @@ namespace MmdWorld.EditorTools
             var stage = GameObject.CreatePrimitive(PrimitiveType.Cube);
             stage.name = "Stage";
             stage.transform.position = new Vector3(0f, 0.01f, 5f);
-            stage.transform.localScale = new Vector3(9f, 0.02f, 4f);
+            stage.transform.localScale = new Vector3(stageWidth, 0.02f, 4f);
             stage.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Stage.mat", new Color(0.15f, 0.15f, 0.2f));
 
             var world = (GameObject)PrefabUtility.InstantiatePrefab(
@@ -224,7 +282,7 @@ namespace MmdWorld.EditorTools
         static DanceSlot BuildSlot(int index, DanceSystem system, List<AnimatorController> controllers)
         {
             var root = new GameObject("Slot" + (index + 1));
-            float x = (index - (SlotCount - 1) * 0.5f) * 1.6f;
+            float x = (index - (_slotCount - 1) * 0.5f) * SlotSpacing;
             // 客席（-Z）の方を向いて踊る
             root.transform.SetPositionAndRotation(new Vector3(x, 0.02f, 4.5f), Quaternion.Euler(0f, 180f, 0f));
 

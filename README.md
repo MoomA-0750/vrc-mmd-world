@@ -11,7 +11,22 @@ VRChat の MMD ワールド（曲に合わせて、参加した人のアバタ�
 - Unity 2022.3.22f1、VRChat SDK Worlds 3.10.5（UdonSharp・ClientSim 同梱）
 - パッケージは `unity/Packages/vpm-manifest.json` から `vrc-get resolve` で入れる（`com.vrchat.*` はリポジトリに入れない）
 
-## 曲を足す
+## マネージャー
+
+「MMD World/マネージャー」のウィンドウで、ワールドに入れるものをまとめて扱う。変えたら「ワールドを組み立て直す」でシーンに反映する。
+
+| 項目 | できること |
+|---|---|
+| 曲 | `.vmd` と音声（wav / mp3 / ogg）をドロップすると曲が増える（エクスプローラーからでも Project からでもよい。`Assets/MmdWorld/Songs/<題名>/` に写す）。題名・音のずれの編集、並べ替え、削除。モーションと音声の長さが食い違うと警告する |
+| お手本のアバター | Humanoid のモデルを登録すると、舞台の奥で曲に合わせて踊る。空なら付属の人形。VMD の表情のうちそのアバターにあるものの数も出る |
+| 着替えの台 | VRChat にアップロード済みで公開（Public）のアバターの ID を登録すると、着替えの台が置かれる |
+| ワールド | 踊る人の枠の数（1〜16）、カウントダウンの秒数 |
+
+購入したアバターをお手本に入れてワールドを公開すると、多くの規約で再配布にあたる。公開するワールドでは、規約で許されたものだけを使う。
+
+設定は `Assets/MmdWorld/Settings.asset` に入る。同じ操作は `MmdWorldLibrary`（`AddSong`・`RemoveSong`・`Move`・`CheckAvatar`）からも呼べる。
+
+## 曲を足す（フォルダに置く方法）
 
 1. `.vmd` と音声ファイルを、同じフォルダに入れて `unity/Assets/` のどこかに置く（1フォルダ1曲）
 2. `MMD World/ワールドを組み立てる` を実行する
@@ -31,6 +46,8 @@ VRChat の MMD ワールド（曲に合わせて、参加した人のアバタ�
 | 取り込み | `Vmd/Editor/VmdImporter.cs` | `.vmd` 用の ScriptedImporter |
 | ギミック（Udon） | `Scripts/DanceSystem.cs`, `DanceSlot.cs`, `DanceButton.cs` | 再生の同期、踊る枠、ボタン |
 | 組み立て | `Editor/WorldBuilder.cs`, `MannequinBuilder.cs` | シーン・ステーション用の Animator・お手本の人形を作る |
+| 管理 | `Editor/MmdWorldManagerWindow.cs`, `MmdWorldLibrary.cs`, `MmdWorldSettings.cs` | マネージャーのウィンドウと、その操作の本体。`LibrarySelfTest` が batchmode で操作を一通り試す |
+| 外からの操作 | `Editor/DevCommands.cs` | 開いているエディタの `Temp/MmdCommand.txt` に処理名（BuildWorld・PlayCheckPreview・BuildAndTest・BuildAndTestAuto・OpenManager など）を書くと実行する |
 | 動作確認 | `Editor/PlayModeCheck.cs` | ClientSim の Play モードで「枠に入る → 再生」を自動で行い、様子をログに出す。客席側から舞台を 1.5 秒おきに撮って `unity/Temp/MmdPlayCheck/` に書き出す |
 
 ### 踊らせ方

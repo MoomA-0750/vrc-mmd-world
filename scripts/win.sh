@@ -37,7 +37,9 @@ unity_batch() { # $1: ログ名 残り: Unity の引数（PowerShell の書き�
   local name=$1; shift
   ps <<PS
 \$log = "\$env:TEMP\\vrc-mmd-world-$name.log"
-\$p = Start-Process -FilePath '$UNITY' -ArgumentList @('-batchmode','-nographics','-projectPath','$WIN_DIR/unity','-logFile',\$log,$*) -Wait -PassThru -NoNewWindow
+# -Wait は Unity が残す子プロセス（ライセンス確認など）の終わりまで待ってしまうので、本体だけを待つ
+\$p = Start-Process -FilePath '$UNITY' -ArgumentList @('-batchmode','-nographics','-projectPath','$WIN_DIR/unity','-logFile',\$log,$*) -PassThru -NoNewWindow
+\$p.WaitForExit()
 "exit=\$(\$p.ExitCode)"
 PS
   scp -q "$HOST:$WIN_TEMP/vrc-mmd-world-$name.log" "$OUT/$name.log" || true

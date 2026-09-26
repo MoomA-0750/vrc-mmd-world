@@ -50,9 +50,12 @@ namespace MmdWorld.EditorTools
             var saved = (settings.slotCount, settings.countdownSeconds, new List<GameObject>(settings.previewDancers), new List<string>(settings.pedestalAvatarIds));
             int before = MmdWorldLibrary.Songs().Count;
             DanceSong song = null;
+            string songPath = null;
             try
             {
                 song = MmdWorldLibrary.AddSong(vmd, wav, "自己テスト/曲:1");
+                // シーンを作り直すと、使われていないアセットは外されて参照が切れるので、パスで持っておく
+                songPath = AssetDatabase.GetAssetPath(song);
                 string dir = Path.GetDirectoryName(AssetDatabase.GetAssetPath(song)).Replace('\\', '/');
                 Check(MmdWorldLibrary.Songs().Count == before + 1, "曲が1つ増える");
                 Check(dir.StartsWith(MmdWorldLibrary.SongsDir + "/") && !dir.Contains(":"), "曲は Songs の下の、使えない文字を除いた名前のフォルダに入る: " + dir);
@@ -98,10 +101,10 @@ namespace MmdWorld.EditorTools
             }
             finally
             {
-                if (song != null)
+                if (songPath != null)
                 {
-                    string dir = Path.GetDirectoryName(AssetDatabase.GetAssetPath(song)).Replace('\\', '/');
-                    MmdWorldLibrary.RemoveSong(song);
+                    string dir = Path.GetDirectoryName(songPath).Replace('\\', '/');
+                    MmdWorldLibrary.RemoveSong(AssetDatabase.LoadAssetAtPath<DanceSong>(songPath));
                     Check(!AssetDatabase.IsValidFolder(dir), "消すと曲のフォルダごと無くなる");
                     Check(MmdWorldLibrary.Songs().Count == before, "曲の数が元に戻る");
                 }

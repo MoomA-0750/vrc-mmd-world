@@ -49,6 +49,8 @@ namespace MmdWorld.EditorTools
             var settings = MmdWorldSettings.LoadOrCreate();
             var saved = (settings.slotCount, settings.countdownSeconds, new List<GameObject>(settings.previewDancers), new List<string>(settings.pedestalAvatarIds));
             int before = MmdWorldLibrary.Songs().Count;
+            // 並べ替えで変わる既存の曲の順番も、終わったら戻す
+            var orders = MmdWorldLibrary.Songs().ToDictionary(s => AssetDatabase.GetAssetPath(s), s => s.order);
             DanceSong song = null;
             string songPath = null;
             try
@@ -108,7 +110,16 @@ namespace MmdWorld.EditorTools
                     Check(!AssetDatabase.IsValidFolder(dir), "消すと曲のフォルダごと無くなる");
                     Check(MmdWorldLibrary.Songs().Count == before, "曲の数が元に戻る");
                 }
+                // シーンを作り直すと設定のアセットも外されて参照が切れるので、読み直してから戻す
+                settings = MmdWorldSettings.LoadOrCreate();
                 (settings.slotCount, settings.countdownSeconds, settings.previewDancers, settings.pedestalAvatarIds) = saved;
+                foreach (var pair in orders)
+                {
+                    var s = AssetDatabase.LoadAssetAtPath<DanceSong>(pair.Key);
+                    if (s == null || s.order == pair.Value) continue;
+                    s.order = pair.Value;
+                    EditorUtility.SetDirty(s);
+                }
                 EditorUtility.SetDirty(settings);
                 AssetDatabase.SaveAssets();
                 WorldBuilder.Build();

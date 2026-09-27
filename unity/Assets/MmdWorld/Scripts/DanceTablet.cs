@@ -34,6 +34,10 @@ namespace MmdWorld
         public string[] desktopKeys;
         [Tooltip("ボタンのキーの表示（デスクトップのときだけ出す）")]
         public GameObject[] desktopKeyLabels;
+        [Tooltip("ふだんのページ（再生・シークなどのボタン）")]
+        public GameObject mainPage;
+        [Tooltip("「選ぶ」のページ（曲・枠・ワールドのアバター）。見えていないページのボタンは押せない")]
+        public GameObject selectPage;
         [Tooltip("VR で指先を示す小さな球")]
         public Transform pointer;
         public string desktopToggleKey = "t";
@@ -123,6 +127,26 @@ namespace MmdWorld
         public void Hide()
         {
             SetVisible(false);
+            ShowPage(false);
+        }
+
+        /// <summary>ふだんのページと「選ぶ」のページを切り替える。</summary>
+        public void ToggleSelectPage()
+        {
+            ShowPage(selectPage != null && !selectPage.activeSelf);
+        }
+
+        void ShowPage(bool select)
+        {
+            if (selectPage != null) selectPage.SetActive(select);
+            if (mainPage != null) mainPage.SetActive(!select);
+            if (_pressed != null)
+                for (int i = 0; i < _pressed.Length; i++)
+                {
+                    _pressed[i] = false;
+                    SetShown(i, 0);
+                }
+            if (select && system != null) system.RefreshSelectPage();
         }
 
         void SetVisible(bool visible)
@@ -164,7 +188,7 @@ namespace MmdWorld
             for (int i = 0; i < buttons.Length; i++)
             {
                 var button = buttons[i];
-                if (button == null) continue;
+                if (button == null || !button.gameObject.activeInHierarchy) continue;
                 var c = transform.InverseTransformPoint(button.transform.position);
                 var half = buttonSizes[i] * 0.5f;
                 bool over = Mathf.Abs(p.x - c.x) <= half.x && Mathf.Abs(p.y - c.y) <= half.y;
@@ -199,7 +223,12 @@ namespace MmdWorld
             var head = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
             transform.SetPositionAndRotation(head.position + head.rotation * desktopOffset, head.rotation);
             for (int i = 0; i < buttons.Length && i < desktopKeys.Length; i++)
-                if (desktopKeys[i] != "" && Input.GetKeyDown(desktopKeys[i])) Press(i);
+                if (desktopKeys[i] != "" && buttons[i] != null && buttons[i].gameObject.activeInHierarchy && Input.GetKeyDown(desktopKeys[i]))
+                {
+                    Press(i);
+                    // 押したボタンでページが変わると、同じキーの別のボタンが同じフレームで押されてしまうので、1フレームに1つだけ
+                    break;
+                }
         }
 
         void SetShown(int i, int state)

@@ -102,7 +102,10 @@ namespace MmdWorld.EditorTools
                 int expectedSlotAvatars = local != null ? 2 : 1;
                 Check(system.slotAvatars.Length == expectedSlotAvatars && system.slotAvatarNames.Length == expectedSlotAvatars, "枠で踊らせるアバターが置かれる（重複は1体）: " + system.slotAvatars.Length);
                 Check(system.slotAvatars.All(a => a != null && !a.gameObject.activeSelf && a.runtimeAnimatorController != null), "枠のアバターは最初は隠れていて、踊りの Animator が付いている");
-                Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSlot.NextAvatar)) == 6, "枠ごとにアバターを選ぶボタンがある");
+                Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSystem.SelectAvatarButton)) == 4
+                      && system.selectAvatarTexts.Length == 4 && system.selectSlotTexts.Length == 4 && system.selectSongTexts.Length == 4,
+                      "タブレットの「選ぶ」のページに、曲・枠・アバター（なし＋3体）のボタンがある");
+                Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).All(b => b.eventName != nameof(DanceSlot.NextAvatar)), "枠ごとの、アバターを順に切り替えるボタンは無い");
                 if (local != null)
                 {
                     var placed = system.slotAvatars.First(a => a.name == local.name).gameObject;

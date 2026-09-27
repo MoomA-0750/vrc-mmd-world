@@ -507,18 +507,7 @@ namespace MmdWorld.EditorTools
                 UdonSharpEditorUtility.CopyProxyToUdon(events);
             }
 
-            // ワールドのアバターを選ぶボタン（アバターが1体もいないワールドでは押しても何も起きない）
-            var avatarButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            avatarButton.name = "AvatarButton";
-            avatarButton.transform.SetParent(root.transform, false);
-            avatarButton.transform.localPosition = new Vector3(0.6f, 0.15f, 0.5f);
-            avatarButton.transform.localScale = new Vector3(0.18f, 0.3f, 0.18f);
-            avatarButton.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/AvatarButton.mat", new Color(0.6f, 0.3f, 0.8f));
-            var ab = UdonSharpUndo.AddComponent<DanceButton>(avatarButton);
-            ab.target = slot;
-            ab.eventName = nameof(DanceSlot.NextAvatar);
-            UdonSharpEditorUtility.GetBackingUdonBehaviour(ab).interactText = "この枠で踊るアバターを選ぶ";
-            UdonSharpEditorUtility.CopyProxyToUdon(ab);
+            // ワールドのアバターは、タブレットの「選ぶ」から枠に置く（以前の、押すたびに切り替える紫のボタンは、使い方が分かりにくかったので外した）
 
             var label = CreateText(root.transform, "Label", "空き", 60, new Vector2(500, 200));
             label.transform.parent.position = root.transform.position + new Vector3(0f, 2.2f, 0f);
@@ -613,40 +602,91 @@ namespace MmdWorld.EditorTools
                 ("プレビュー", "TogglePreview", KeyCode.Alpha7, 2, 1, 1, false), ("ループ", "ToggleLoop", KeyCode.Alpha8, 3, 1, 1, false),
                 ("開始 ◀", "RangeStartBack", KeyCode.Alpha9, 0, 2, 1, false), ("開始 ▶", "RangeStartForward", KeyCode.Alpha0, 1, 2, 1, false),
                 ("終了 ◀", "RangeEndBack", KeyCode.Minus, 2, 2, 1, false), ("終了 ▶", "RangeEndForward", KeyCode.Equals, 3, 2, 1, false),
-                ("踊る / やめる", "ToggleLocalJoin", KeyCode.J, 0, 3, 2, false), ("閉じる", "Hide", KeyCode.None, 3, 3, 1, true),
+                ("踊る / やめる", "ToggleLocalJoin", KeyCode.J, 0, 3, 1, false), ("その場: オフ", "ToggleInPlace", KeyCode.K, 1, 3, 1, false),
+                ("選ぶ", "ToggleSelectPage", KeyCode.L, 2, 3, 1, true), ("閉じる", "Hide", KeyCode.None, 3, 3, 1, true),
             };
             const float cellW = 86f, cellH = 52f, top = 35f;
+            var inPlaceLabels = new List<Text>();
             var buttons = new List<DanceButton>();
             var images = new List<Image>();
             var sizes = new List<Vector2>();
             var keys = new List<string>();
             var keyLabels = new List<GameObject>();
             var tablet = UdonSharpUndo.AddComponent<DanceTablet>(rootGo);
-            foreach (var d in defs)
+            var mainPage = UiPage(canvas, "MainPage");
+            var selectPage = UiPage(canvas, "SelectPage");
+
+            // 1つのボタンを作って、押す判定・キーの一覧に足す。label を返す
+            Text AddButton(RectTransform page, string text, string evt, KeyCode key, float x, float y, float w, float h, bool onTablet, int argument, int fontSize)
             {
-                float w = cellW * d.span - 8f, h = cellH - 10f;
-                float x = -cellW * 1.5f + cellW * d.col + cellW * (d.span - 1) * 0.5f;
-                float y = top - cellH * d.row;
-                var image = UiImage(canvas, "Button_" + d.evt, new Vector2(x, y), new Vector2(w, h), new Color(0.25f, 0.45f, 0.8f), sprite);
+                var image = UiImage(page, "Button_" + evt + (argument >= 0 ? "_" + argument : ""), new Vector2(x, y), new Vector2(w, h), new Color(0.25f, 0.45f, 0.8f), sprite);
                 var db = UdonSharpUndo.AddComponent<DanceButton>(image.gameObject);
-                db.target = d.onTablet ? (UdonSharpBehaviour)tablet : system;
-                db.eventName = d.evt;
+                db.target = onTablet ? (UdonSharpBehaviour)tablet : system;
+                db.eventName = evt;
+                db.argument = argument;
                 UdonSharpEditorUtility.CopyProxyToUdon(db);
                 buttons.Add(db);
                 images.Add(image);
                 // DanceTablet は、ボタンの中心を DanceTablet から見た位置（メートル）で、大きさをここの値（メートル）で比べる
                 sizes.Add(new Vector2(w, h) * 0.001f);
-                keys.Add(KeyInputName(d.key));
-
-                UiText(image.transform, "Label", d.text, 12, Vector2.zero, new Vector2(w, h));
-                if (d.key != KeyCode.None)
+                keys.Add(KeyInputName(key));
+                var label = UiText(image.transform, "Label", text, fontSize, Vector2.zero, new Vector2(w - 6f, h));
+                if (key != KeyCode.None)
                 {
-                    var keyLabel = UiText(image.transform, "Key", "[" + KeyName(d.key) + "]", 8, new Vector2(3f, -2f), new Vector2(w, h));
+                    var keyLabel = UiText(image.transform, "Key", "[" + KeyName(key) + "]", 8, new Vector2(3f, -2f), new Vector2(w, h));
                     keyLabel.alignment = TextAnchor.UpperLeft;
                     keyLabel.color = new Color(1f, 0.85f, 0.3f);
                     keyLabels.Add(keyLabel.gameObject);
                 }
+                return label;
             }
+
+            foreach (var d in defs)
+            {
+                float w = cellW * d.span - 8f, h = cellH - 10f;
+                float x = -cellW * 1.5f + cellW * d.col + cellW * (d.span - 1) * 0.5f;
+                float y = top - cellH * d.row;
+                var label = AddButton(mainPage, d.text, d.evt, d.key, x, y, w, h, d.onTablet, -1, 12);
+                if (d.evt == "ToggleInPlace") inPlaceLabels.Add(label);
+            }
+
+            // 「選ぶ」のページ: 曲の一覧 / 枠 / ワールドのアバターの一覧（先頭は「なし」）/ ページ送り / 戻る
+            const float selH = 42f, selTop = 38f;
+            var songTexts = new List<Text>();
+            var slotTexts = new List<Text>();
+            var avatarTexts = new List<Text>();
+            var rowKeys = new[]
+            {
+                new[] { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4 },
+                new[] { KeyCode.Alpha5, KeyCode.Alpha6, KeyCode.Alpha7, KeyCode.Alpha8 },
+                new[] { KeyCode.Alpha9, KeyCode.Alpha0, KeyCode.Minus, KeyCode.Equals },
+            };
+            for (int col = 0; col < 4; col++)
+            {
+                float x = -cellW * 1.5f + cellW * col, w = cellW - 8f, h = selH - 8f;
+                var song = AddButton(selectPage, "", "SelectSongButton", rowKeys[0][col], x, selTop, w, h, false, col, 10);
+                var slot = AddButton(selectPage, "", "SelectSlotButton", rowKeys[1][col], x, selTop - selH, w, h, false, col, 10);
+                var avatar = AddButton(selectPage, "", "SelectAvatarButton", rowKeys[2][col], x, selTop - selH * 2f, w, h, false, col, 10);
+                foreach (var t in new[] { song, slot, avatar }) t.horizontalOverflow = HorizontalWrapMode.Wrap;
+                songTexts.Add(song);
+                slotTexts.Add(slot);
+                avatarTexts.Add(avatar);
+            }
+            var pageDefs = new (string text, string evt, KeyCode key)[]
+            {
+                ("◀ 曲", "SongPagePrev", KeyCode.LeftBracket), ("曲 ▶", "SongPageNext", KeyCode.RightBracket),
+                ("◀ アバター", "AvatarPagePrev", KeyCode.Comma), ("アバター ▶", "AvatarPageNext", KeyCode.Period),
+            };
+            for (int col = 0; col < 4; col++)
+                AddButton(selectPage, pageDefs[col].text, pageDefs[col].evt, pageDefs[col].key, -cellW * 1.5f + cellW * col, selTop - selH * 3f, cellW - 8f, selH - 8f, false, -1, 11);
+            AddButton(selectPage, "戻る", "ToggleSelectPage", KeyCode.L, -cellW * 1.5f, selTop - selH * 4f, cellW - 8f, selH - 8f, true, -1, 12);
+            var hint = UiText(selectPage, "Hint", "上から: 曲 / 枠（アバターを置く枠）/ その枠で踊るワールドのアバター", 9, new Vector2(cellW * 0.5f, selTop - selH * 4f), new Vector2(cellW * 3f - 8f, selH - 8f));
+            hint.horizontalOverflow = HorizontalWrapMode.Wrap;
+            hint.color = new Color(0.8f, 0.8f, 0.85f);
+            selectPage.gameObject.SetActive(false);
+            system.selectSongTexts = songTexts.ToArray();
+            system.selectSlotTexts = slotTexts.ToArray();
+            system.selectAvatarTexts = avatarTexts.ToArray();
 
             // シークバー。body を隠すと中の UdonBehaviour が動かなくなるので、スクリプトは常に出ている根元に付け、見た目だけ body の中に置く
             var seekBar = UdonSharpUndo.AddComponent<DanceSeekBar>(rootGo);
@@ -659,8 +699,11 @@ namespace MmdWorld.EditorTools
             pointer.transform.localScale = Vector3.one * 0.012f;
             pointer.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Pointer.mat", new Color(1f, 0.6f, 0.1f));
 
+            system.inPlaceLabels = inPlaceLabels.ToArray();
             tablet.system = system;
             tablet.body = body;
+            tablet.mainPage = mainPage.gameObject;
+            tablet.selectPage = selectPage.gameObject;
             tablet.buttons = buttons.ToArray();
             tablet.buttonImages = images.ToArray();
             tablet.buttonSizes = sizes.ToArray();
@@ -677,6 +720,18 @@ namespace MmdWorld.EditorTools
                 pointer.layer = walkthrough;
             }
             return (tablet, title, status, seekBar);
+        }
+
+        /// <summary>親いっぱいに広がる、ボタンをまとめるための空の RectTransform（タブレットのページ）。</summary>
+        static RectTransform UiPage(RectTransform parent, string name)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            return rt;
         }
 
         /// <summary>uGUI の Image を1つ置く（位置と大きさはピクセル。親の中心が原点）。</summary>
@@ -812,6 +867,10 @@ namespace MmdWorld.EditorTools
             KeyCode.None => "",
             KeyCode.Minus => "-",
             KeyCode.Equals => "=",
+            KeyCode.LeftBracket => "[",
+            KeyCode.RightBracket => "]",
+            KeyCode.Comma => ",",
+            KeyCode.Period => ".",
             _ => key.ToString().Replace("Alpha", "").ToLowerInvariant(),
         };
 
@@ -819,6 +878,10 @@ namespace MmdWorld.EditorTools
         {
             KeyCode.Minus => "-",
             KeyCode.Equals => "=",
+            KeyCode.LeftBracket => "[",
+            KeyCode.RightBracket => "]",
+            KeyCode.Comma => ",",
+            KeyCode.Period => ".",
             _ => key.ToString().Replace("Alpha", ""),
         };
 

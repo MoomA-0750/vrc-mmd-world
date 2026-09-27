@@ -30,6 +30,8 @@ namespace MmdWorld
         [UdonSynced] int _avatarIndex = -1;
         /// <summary>踊っている人がスティック・WASD で動かした分（ステーションの親のローカル座標、XZ、メートル）。踊っている人（この枠の持ち主）が書く</summary>
         [UdonSynced] Vector3 _drive;
+        /// <summary>踊っている人が「その場で踊る」を選んでいるか。オンならステーションを軌跡どおりに動かさない（視点は動かないが、体は移動せず足踏みになる）</summary>
+        [UdonSynced] bool _inPlace;
         /// <summary>表示に使う値。持ち主はそのまま、ほかの人は同期された値を滑らかに追う</summary>
         Vector3 _shownDrive;
         bool _driveDirty;
@@ -52,6 +54,20 @@ namespace MmdWorld
             {
                 _shownDrive = Vector3.Lerp(_shownDrive, _drive, 1f - Mathf.Exp(-8f * Time.deltaTime));
             }
+        }
+
+        public bool IsInPlace()
+        {
+            return _inPlace;
+        }
+
+        /// <summary>自分が踊っている枠なら、「その場で踊る」を入れる。</summary>
+        public void SetLocalInPlace(bool inPlace)
+        {
+            if (!IsLocalDancer() || _inPlace == inPlace) return;
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
+            _inPlace = inPlace;
+            RequestSerialization();
         }
 
         /// <summary>踊っている人が動かした分（ステーションの親のローカル座標）。</summary>
@@ -127,6 +143,34 @@ namespace MmdWorld
             system.RefreshSlotAvatars();
         }
 
+        /// <summary>
+        /// この枠で踊らせるワールドのアバターを index にする（-1 で外す）。タブレットの「選ぶ」から呼ぶ。
+        /// 人が入っている枠と、ほかの枠で踊っているアバターには何もしない。
+        /// </summary>
+        public void SetAvatar(int index)
+        {
+            if (system == null || IsTaken() || index >= system.SlotAvatarCount() || index == _avatarIndex) return;
+            if (index >= 0 && system.IsSlotAvatarUsed(index, this)) return;
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
+            _avatarIndex = index;
+            RequestSerialization();
+            Refresh();
+            system.RefreshSlotAvatars();
+        }
+
+        /// <summary>選ぶページに出す、この枠の今の状態（人の名前・ワールドのアバターの名前・空き）。</summary>
+        public string Describe()
+        {
+            if (IsTaken()) return VRCPlayerApi.GetPlayerById(_dancerId).displayName;
+            if (_avatarIndex >= 0 && system != null) return system.SlotAvatarName(_avatarIndex);
+            return "空き";
+        }
+
+        public bool HasDancer()
+        {
+            return IsTaken();
+        }
+
         /// <summary>空いていれば自分の枠にする（自動確認用）。</summary>
         public void ClaimForLocal()
         {
@@ -178,8 +222,11 @@ namespace MmdWorld
             _dancerId = playerId;
             _drive = Vector3.zero;
             _shownDrive = Vector3.zero;
+            _inPlace = false;
             RequestSerialization();
             Refresh();
+            // 入った人の「その場で踊る」の選択を枠に入れる
+            if (playerId >= 0 && system != null) system.ApplyInPlace();
         }
 
         bool IsTaken()

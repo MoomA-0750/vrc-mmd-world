@@ -185,7 +185,17 @@ namespace MmdWorld
         {
             if (tablet == null) return;
             tablet.Press(2);  // 停止
-            tablet.Press(13); // 閉じる
+            // 範囲を狭めて、シークバーの帯と再生位置（止まっているときは開始点）が動くのを見る
+            tablet.Press(9);  // 開始 ▶
+            tablet.Press(9);
+            tablet.Press(10); // 終了 ◀
+            tablet.Press(10);
+            SendCustomEventDelayedSeconds(nameof(_AutoTestTabletClose), 8f);
+        }
+
+        public void _AutoTestTabletClose()
+        {
+            if (tablet != null) tablet.Press(13); // 閉じる
         }
 
         public void _AutoTestRangePlay()

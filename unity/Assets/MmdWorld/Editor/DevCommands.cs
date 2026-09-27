@@ -20,6 +20,7 @@ namespace MmdWorld.EditorTools
     ///   BuildAndTestAuto [着替えるID] [戻すID] [features]
     ///                     features を付けると、再生とシークの代わりに、プレビュー・範囲再生・ループ・途中からの参加を試す。
     ///                     tablet を付けると、手元のタブレットを出してそのボタンから操作する
+    ///                     mobile を付けると、このビルドの間だけステーションを PlayerMobility.Mobile にする（踊りながら歩けるかの検証）
     ///                     同上。クライアントを2つ起動し、先に入った方が12秒後に枠1に入って再生する（そのビルドだけ）。後の方は枠1の正面から見る。
     ///                     ID を渡すと、踊る前にそのアバターに着替え、終わったら戻す ID のアバターに着替え直す（自分がアップロードしたか公開のアバターだけ）
     ///   OpenManager       マネージャーのウィンドウを開く
@@ -68,7 +69,8 @@ namespace MmdWorld.EditorTools
                     case "BuildAndTestAuto":
                         // BuildAndTestAuto [着替えるアバターID] [戻すアバターID]
                         BuildAndTest(true, words.Length > 1 ? words[1] : "", words.Length > 2 ? words[2] : "",
-                            words.Length > 3 ? (words[3] == "features" ? 1 : words[3] == "tablet" ? 2 : 0) : 0);
+                            words.Length > 3 ? (words[3] == "features" ? 1 : words[3] == "tablet" ? 2 : 0) : 0,
+                            words.Contains("mobile"));
                         break;
                     case "OpenManager":
                         MmdWorldManagerWindow.Open();
@@ -92,7 +94,7 @@ namespace MmdWorld.EditorTools
 
         public static void BuildAndTest(bool autoTest) => BuildAndTest(autoTest, "", "", 0);
 
-        public static async void BuildAndTest(bool autoTest, string avatarId, string restoreAvatarId, int scenario)
+        public static async void BuildAndTest(bool autoTest, string avatarId, string restoreAvatarId, int scenario, bool mobile = false)
         {
             if (EditorApplication.isPlaying)
             {
@@ -135,6 +137,7 @@ namespace MmdWorld.EditorTools
                     }
                 }
                 UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(system);
+                if (mobile) SetStationMobility(VRC.SDKBase.VRCStation.Mobility.Mobile);
             }
             try
             {
@@ -185,9 +188,23 @@ namespace MmdWorld.EditorTools
                 system.autoTestViewPoint = null;
                 UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(system);
             }
+            SetStationMobility(VRC.SDKBase.VRCStation.Mobility.Immobilize);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             Debug.Log("[MmdWorld.Command] 自動確認のために入れたものをシーンから消した");
+        }
+
+        static void SetStationMobility(VRC.SDKBase.VRCStation.Mobility mobility)
+        {
+            foreach (var slot in UnityEngine.Object.FindObjectsOfType<DanceSlot>(true))
+                foreach (var station in slot.stations)
+                {
+                    if (station == null) continue;
+                    if (station.PlayerMobility == mobility) continue;
+                    station.PlayerMobility = mobility;
+                    EditorUtility.SetDirty(station);
+                }
+            Debug.Log("[MmdWorld.Command] ステーションの PlayerMobility: " + mobility);
         }
 
         /// <summary>床の下に隠した着替えの台を置き、アバターの ID を入れる（自動確認のビルドの間だけ）。</summary>

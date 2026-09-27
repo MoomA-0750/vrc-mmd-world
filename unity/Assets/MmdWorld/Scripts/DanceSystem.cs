@@ -315,7 +315,7 @@ namespace MmdWorld
 
         public void _AutoTestTabletClose()
         {
-            if (tablet != null) tablet.Press(13); // 閉じる
+            if (tablet != null) tablet.Press(15); // 閉じる
         }
 
         public void _AutoTestRangePlay()

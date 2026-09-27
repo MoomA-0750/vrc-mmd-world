@@ -10,6 +10,8 @@ namespace MmdWorld.EditorTools
         public string title;
         [Tooltip(".vmd を取り込んだ AnimationClip")]
         public AnimationClip motion;
+        [Tooltip("表情だけの .vmd を取り込んだ AnimationClip（配布物で表情が別になっているとき）。組み立てのとき、モーションの表情をこれで上書きする")]
+        public AnimationClip face;
         public AudioClip audio;
         [Tooltip("音をモーションより何秒遅らせるか（音が早いときは +）")]
         public float audioOffset;

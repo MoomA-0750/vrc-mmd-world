@@ -29,13 +29,90 @@ namespace MmdWorld.EditorTools
         public static bool IsVmdFile(string path) => string.Equals(Path.GetExtension(path), ".vmd", StringComparison.OrdinalIgnoreCase);
         public static bool IsValidAvatarId(string id) => id != null && AvatarId.IsMatch(id.Trim());
 
+        /// <summary>VR で踊りを体に乗せる部品（アバター SDK の VRCAnimatorTrackingControl）がこのプロジェクトにあるか。</summary>
+        public static bool HasTrackingControl() => AppDomain.CurrentDomain.GetAssemblies()
+            .Any(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl") != null);
+
+        public const string AvatarSdkDir = "Assets/LocalOnly/VRChatAvatarSDK";
+
+        /// <summary>
+        /// アバター SDK の VRCSDK3A.dll をファイルの選択で選んでもらい、Assets/LocalOnly/VRChatAvatarSDK/ に写す（LocalOnly はリポジトリに入らない）。
+        /// SDK の DLL は配れないので、各自のアバター用のプロジェクトから写す。
+        /// </summary>
+        public static bool InstallAvatarSdkDll()
+        {
+            string picked = EditorUtility.OpenFilePanel("アバター SDK の VRCSDK3A.dll を選ぶ（アバター用のプロジェクトの Packages/com.vrchat.avatars/Runtime/VRCSDK/Plugins/）",
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "dll");
+            if (string.IsNullOrEmpty(picked)) return false;
+            if (!string.Equals(Path.GetFileName(picked), "VRCSDK3A.dll", StringComparison.OrdinalIgnoreCase))
+            {
+                EditorUtility.DisplayDialog("VR 用の部品", "VRCSDK3A.dll を選んでください（選んだのは " + Path.GetFileName(picked) + "）", "OK");
+                return false;
+            }
+            Directory.CreateDirectory(AvatarSdkDir);
+            File.Copy(picked, $"{AvatarSdkDir}/VRCSDK3A.dll", true);
+            AssetDatabase.Refresh();
+            return true;
+        }
+
+        /// <summary>.vmd の中身の種類。MMD の配布物には、踊りのほかに表情だけ・カメラだけの .vmd が入っていることが多い。</summary>
+        public enum VmdKind { Dance, Face, Camera, Empty }
+
+        /// <summary>体を動かすボーン。これにキーがあれば踊りのモーション。</summary>
+        static readonly string[] BodyBones = { "全ての親", "センター", "グルーブ", "下半身", "上半身", "左足ＩＫ", "右足ＩＫ" };
+
+        /// <summary>.vmd の中身を見て、踊り・表情だけ・カメラだけ・キー無しに分ける。</summary>
+        public static VmdKind Classify(string vmdPath)
+        {
+            // 大きな .vmd は読むのに時間がかかるので、ファイルの更新時刻ごとに覚えておく（マネージャーは描き直すたびに呼ぶ）
+            string key = Path.GetFullPath(vmdPath) + "|" + File.GetLastWriteTimeUtc(vmdPath).Ticks;
+            if (KindCache.TryGetValue(key, out var cached)) return cached;
+            var kind = ClassifyUncached(vmdPath);
+            KindCache[key] = kind;
+            return kind;
+        }
+
+        static readonly Dictionary<string, VmdKind> KindCache = new Dictionary<string, VmdKind>();
+
+        static VmdKind ClassifyUncached(string vmdPath)
+        {
+            var motion = MmdWorld.Vmd.VmdReader.Read(vmdPath);
+            int boneKeys = motion.Bones.Values.Sum(k => k.Count);
+            bool body = BodyBones.Any(b => motion.Bones.TryGetValue(b, out var keys) && keys.Count >= 2);
+            if (body || boneKeys >= 30) return VmdKind.Dance;
+            if (motion.Morphs.Values.Sum(k => k.Count) > 0) return VmdKind.Face;
+            if (motion.CameraKeyCount > 0) return VmdKind.Camera;
+            return VmdKind.Empty;
+        }
+
+        public static string KindName(VmdKind kind) => kind switch
+        {
+            VmdKind.Face => "表情だけのモーション",
+            VmdKind.Camera => "カメラのモーション",
+            VmdKind.Empty => "キーの無いモーション",
+            _ => "踊りのモーション",
+        };
+
+        /// <summary>曲のモーションが踊りのモーションか（表情だけ・カメラの .vmd を曲にしていないか）。</summary>
+        public static bool IsDance(DanceSong song)
+        {
+            string path = song.motion != null ? AssetDatabase.GetAssetPath(song.motion) : null;
+            return path != null && IsVmdFile(path) && File.Exists(path) ? Classify(path) == VmdKind.Dance : song.motion != null;
+        }
+
         /// <summary>
         /// 曲を1つ足す。.vmd と音声（無くてもよい）を Songs/&lt;題名&gt;/ に写し、取り込んで DanceSong を作る。
         /// パスはプロジェクトの外（エクスプローラーからのドロップなど）でも、Assets の中でもよい。中のものも写す（元はそのまま残る）。
         /// </summary>
-        public static DanceSong AddSong(string vmdPath, string audioPath = null, string title = null)
+        public static DanceSong AddSong(string vmdPath, string audioPath = null, string title = null, string facePath = null)
         {
             if (!IsVmdFile(vmdPath) || !File.Exists(vmdPath)) throw new ArgumentException(".vmd が見つかりません: " + vmdPath);
+            var kind = Classify(vmdPath);
+            if (kind != VmdKind.Dance)
+                throw new ArgumentException($"{Path.GetFileName(vmdPath)} は{KindName(kind)}なので、曲にはできません" +
+                                            (kind == VmdKind.Face ? "（踊りの .vmd と一緒にドロップするか、曲の「表情」に入れる）" : ""));
+            if (!string.IsNullOrEmpty(facePath) && (!IsVmdFile(facePath) || !File.Exists(facePath)))
+                throw new ArgumentException("表情の .vmd が見つかりません: " + facePath);
             if (!string.IsNullOrEmpty(audioPath) && (!IsAudioFile(audioPath) || !File.Exists(audioPath)))
                 throw new ArgumentException("音声ファイル（wav / mp3 / ogg）が見つかりません: " + audioPath);
 
@@ -51,12 +128,20 @@ namespace MmdWorld.EditorTools
                 audioAsset = $"{dir}/{Path.GetFileName(audioPath)}";
                 File.Copy(audioPath, audioAsset);
             }
+            string faceAsset = null;
+            if (!string.IsNullOrEmpty(facePath))
+            {
+                faceAsset = $"{dir}/{Path.GetFileName(facePath)}";
+                if (faceAsset == vmdAsset) faceAsset = $"{dir}/表情_{Path.GetFileName(facePath)}";
+                File.Copy(facePath, faceAsset);
+            }
             AssetDatabase.Refresh();
 
             var song = ScriptableObject.CreateInstance<DanceSong>();
             song.title = title;
             song.motion = AssetDatabase.LoadAssetAtPath<AnimationClip>(vmdAsset);
             song.audio = audioAsset != null ? AssetDatabase.LoadAssetAtPath<AudioClip>(audioAsset) : null;
+            song.face = faceAsset != null ? AssetDatabase.LoadAssetAtPath<AnimationClip>(faceAsset) : null;
             song.order = Songs().Select(s => s.order).DefaultIfEmpty(-1).Max() + 1;
             if (song.motion == null) throw new InvalidOperationException(".vmd を取り込めませんでした: " + vmdAsset);
             AssetDatabase.CreateAsset(song, $"{dir}/{SafeName(title)}.asset");
@@ -145,10 +230,13 @@ namespace MmdWorld.EditorTools
             var wanted = new HashSet<string>();
             foreach (var song in songs)
             {
-                if (song.motion == null) continue;
-                foreach (var b in AnimationUtility.GetCurveBindings(song.motion))
-                    if (b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape."))
-                        wanted.Add(b.propertyName.Substring("blendShape.".Length));
+                foreach (var clip in new[] { song.motion, song.face })
+                {
+                    if (clip == null) continue;
+                    foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                        if (b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape."))
+                            wanted.Add(b.propertyName.Substring("blendShape.".Length));
+                }
             }
             check.MorphsWanted = wanted.Count;
             check.MorphsFound = wanted.Count(shapes.Contains);

@@ -28,6 +28,30 @@ namespace MmdWorld.EditorTools
             EditorApplication.Exit(failures.Count == 0 ? 0 : 1);
         }
 
+        /// <summary>ボーンのキーの無い .vmd を書く（表情「あ」を morphKeys 個、カメラのキーを cameraKeys 個）。</summary>
+        static void WriteVmd(string path, int morphKeys, int cameraKeys)
+        {
+            using (var w = new BinaryWriter(File.Create(path)))
+            {
+                var header = new byte[30];
+                System.Text.Encoding.ASCII.GetBytes("Vocaloid Motion Data 0002").CopyTo(header, 0);
+                w.Write(header);
+                w.Write(new byte[20]);
+                w.Write(0u); // ボーン
+                w.Write((uint)morphKeys);
+                for (int i = 0; i < morphKeys; i++)
+                {
+                    var name = new byte[15];
+                    name[0] = 0x82; name[1] = 0xA0; // 「あ」（Shift_JIS）
+                    w.Write(name);
+                    w.Write((uint)(i * 30));
+                    w.Write(i == 0 ? 0f : 0.77f);
+                }
+                w.Write((uint)cameraKeys);
+                w.Write(new byte[61 * cameraKeys]);
+            }
+        }
+
         public static List<string> Run()
         {
             var failures = new List<string>();
@@ -41,10 +65,29 @@ namespace MmdWorld.EditorTools
             File.Copy(SourceVmd, vmd, true);
             File.Copy(SourceAudio, wav, true);
 
-            var pairs = MmdWorldManagerWindow.PairFiles(new[] { vmd, wav });
-            Check(pairs.Count == 1 && pairs[0].audio == wav, "vmd と音声が1つずつなら組になる");
-            var named = MmdWorldManagerWindow.PairFiles(new[] { "a/x.vmd", "a/y.vmd", "a/y.ogg", "a/z.wav" });
-            Check(named.Count == 2 && named[0].audio == null && named[1].audio == "a/y.ogg", "複数なら同じ名前どうしが組になる");
+            // 表情だけ・カメラだけの .vmd（MMD の配布物によく一緒に入っている）
+            string faceVmd = Path.Combine(temp, "selftest_face.vmd");
+            string cameraVmd = Path.Combine(temp, "selftest_camera.vmd");
+            WriteVmd(faceVmd, 2, 0);
+            WriteVmd(cameraVmd, 0, 3);
+            Check(MmdWorldLibrary.Classify(vmd) == MmdWorldLibrary.VmdKind.Dance, "踊りの .vmd は踊りと分かる");
+            Check(MmdWorldLibrary.Classify(faceVmd) == MmdWorldLibrary.VmdKind.Face, "表情だけの .vmd は表情と分かる");
+            Check(MmdWorldLibrary.Classify(cameraVmd) == MmdWorldLibrary.VmdKind.Camera, "カメラの .vmd はカメラと分かる");
+
+            MmdWorldLibrary.VmdKind Fake(string p) => p.Contains("face") ? MmdWorldLibrary.VmdKind.Face
+                : p.Contains("camera") ? MmdWorldLibrary.VmdKind.Camera : MmdWorldLibrary.VmdKind.Dance;
+            var single = MmdWorldManagerWindow.PlanDropped(new[] { "a/x.vmd", "a/song.wav" }, Fake);
+            Check(single.Songs.Count == 1 && single.Songs[0].audio == "a/song.wav", "vmd と音声が1つずつなら組になる");
+            var bundle = MmdWorldManagerWindow.PlanDropped(new[] { "a/center.vmd", "a/left.vmd", "a/face.vmd", "a/camera.vmd", "a/song.wav" }, Fake);
+            Check(bundle.Songs.Count == 2 && bundle.Songs.All(t => t.audio == "a/song.wav" && t.face == "a/face.vmd") && bundle.Skipped.Count == 1,
+                  "配布物をまとめて落とすと、踊りごとに曲になり、音声と表情は全部に付き、カメラは飛ばす");
+            var named = MmdWorldManagerWindow.PlanDropped(new[] { "a/x.vmd", "a/y.vmd", "a/y.ogg", "a/z.wav" }, Fake);
+            Check(named.Songs.Count == 2 && named.Songs[0].audio == null && named.Songs[1].audio == "a/y.ogg", "音声が複数なら同じ名前どうしが組になる");
+            var faceOnly = MmdWorldManagerWindow.PlanDropped(new[] { "a/face.vmd" }, Fake);
+            Check(faceOnly.Songs.Count == 0 && faceOnly.Skipped.Count == 1, "表情だけを落としても曲にはしない");
+            bool rejected = false;
+            try { MmdWorldLibrary.AddSong(cameraVmd); } catch (ArgumentException) { rejected = true; }
+            Check(rejected, "カメラの .vmd は曲として足せない");
 
             var settings = MmdWorldSettings.LoadOrCreate();
             var saved = (settings.slotCount, settings.countdownSeconds, new List<GameObject>(settings.previewDancers), new List<string>(settings.pedestalAvatarIds));
@@ -56,7 +99,7 @@ namespace MmdWorld.EditorTools
             string songPath = null;
             try
             {
-                song = MmdWorldLibrary.AddSong(vmd, wav, "自己テスト/曲:1");
+                song = MmdWorldLibrary.AddSong(vmd, wav, "自己テスト/曲:1", faceVmd);
                 // シーンを作り直すと、使われていないアセットは外されて参照が切れるので、パスで持っておく
                 songPath = AssetDatabase.GetAssetPath(song);
                 string dir = Path.GetDirectoryName(AssetDatabase.GetAssetPath(song)).Replace('\\', '/');
@@ -64,6 +107,7 @@ namespace MmdWorld.EditorTools
                 Check(dir.StartsWith(MmdWorldLibrary.SongsDir + "/") && !dir.Contains(":"), "曲は Songs の下の、使えない文字を除いた名前のフォルダに入る: " + dir);
                 Check(song.motion != null && song.motion.humanMotion, "モーションが Humanoid として取り込まれる");
                 Check(song.audio != null && song.audio.length > 90f, "音声が入る");
+                Check(song.face != null, "表情の .vmd が曲の表情に入る");
                 Check(song.title == "自己テスト/曲:1", "題名はそのまま残る");
                 Check(MmdWorldLibrary.Songs().Last() == song, "新しい曲は最後に並ぶ");
 
@@ -89,6 +133,16 @@ namespace MmdWorld.EditorTools
                 WorldBuilder.Build();
                 var slots = UnityEngine.Object.FindObjectsOfType<DanceSlot>(true);
                 Check(slots.Length == 6, "枠が6つになる: " + slots.Length);
+                {
+                    // 足した曲のステーションのクリップに、表情の .vmd の「あ」（30 フレームで 0.77）が重なっている
+                    var sys = UnityEngine.Object.FindObjectsOfType<DanceSystem>(true).First();
+                    int index = Array.IndexOf(sys.songTitles, "自己テスト/曲:1");
+                    var controller = index >= 0 ? sys.segmentControllers[sys.segmentStart[index]] as UnityEditor.Animations.AnimatorController : null;
+                    var clip = controller != null ? controller.layers[0].stateMachine.defaultState.motion as AnimationClip : null;
+                    var binding = clip != null ? AnimationUtility.GetCurveBindings(clip).FirstOrDefault(b => b.propertyName == "blendShape.あ") : default;
+                    var curve = clip != null && binding.propertyName != null ? AnimationUtility.GetEditorCurve(clip, binding) : null;
+                    Check(curve != null && Mathf.Abs(curve.Evaluate(1f) - 0.77f) < 0.01f, "表情の .vmd がステーションのクリップに重なる");
+                }
                 int songCount = MmdWorldLibrary.Songs().Count;
                 Check(slots.All(s => s.stations.Length == 2 && s.stations.All(st => st != null) && s.stationRoot != null), "どの枠にもステーションが2つ（交互に乗り換える用）ある");
                 var pedestals = UnityEngine.Object.FindObjectsOfType<VRCAvatarPedestal>(true);

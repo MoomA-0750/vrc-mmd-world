@@ -26,6 +26,7 @@ namespace MmdWorld.EditorTools
 
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
             if (!string.IsNullOrEmpty(_message)) EditorGUILayout.HelpBox(_message, _messageType);
+            DrawTrackingControl();
 
             DrawSongs(songs);
             EditorGUILayout.Space(12);
@@ -37,6 +38,17 @@ namespace MmdWorld.EditorTools
             EditorGUILayout.Space(12);
             DrawWorld(settings);
             EditorGUILayout.EndScrollView();
+        }
+
+        /// <summary>VR で踊りを体に乗せる部品が無ければ、目立つように出して、入れるボタンを置く。</summary>
+        void DrawTrackingControl()
+        {
+            if (MmdWorldLibrary.HasTrackingControl()) return;
+            EditorGUILayout.HelpBox("VR 用の部品（アバター SDK の VRCSDK3A.dll）がありません。このままでは、VR で踊りが体に乗らず（その場で足踏みのようになる）、降りてもトラッキングが戻りません。\n" +
+                                    "アバター用のプロジェクトの Packages/com.vrchat.avatars/Runtime/VRCSDK/Plugins/VRCSDK3A.dll を入れてから、ワールドを組み立て直してください。", MessageType.Error);
+            if (GUILayout.Button("VRCSDK3A.dll を選んで入れる") && MmdWorldLibrary.InstallAvatarSdkDll())
+                Show("VRCSDK3A.dll を入れました。スクリプトの読み込みが終わったら、ワールドを組み立て直してください", MessageType.Info);
+            EditorGUILayout.Space(8);
         }
 
         // ---- 曲 ----
@@ -71,6 +83,7 @@ namespace MmdWorld.EditorTools
 
                     EditorGUI.BeginChangeCheck();
                     var motion = (AnimationClip)EditorGUILayout.ObjectField("モーション", song.motion, typeof(AnimationClip), false);
+                    var face = (AnimationClip)EditorGUILayout.ObjectField(new GUIContent("表情（別の .vmd）", "表情だけの .vmd が別になっているとき。モーションの表情をこれで上書きする"), song.face, typeof(AnimationClip), false);
                     var audio = (AudioClip)EditorGUILayout.ObjectField("音声", song.audio, typeof(AudioClip), false);
                     float offset = EditorGUILayout.FloatField(new GUIContent("音のずれ（秒）", "音をモーションより何秒遅らせるか。音が早いときは +"), song.audioOffset);
                     float step = EditorGUILayout.FloatField(new GUIContent("区切りの間隔（秒）", "シーク・範囲再生・途中からの参加の区切り。細かいほどステーション用の Controller が増える。区切りの時刻を直接並べたいときは曲のアセットの seekPoints に入れる"), song.seekStep);
@@ -78,12 +91,15 @@ namespace MmdWorld.EditorTools
                     {
                         Undo.RecordObject(song, "曲の設定");
                         song.motion = motion;
+                        song.face = face;
                         song.audio = audio;
                         song.audioOffset = offset;
                         song.seekStep = Mathf.Max(2f, step);
                         EditorUtility.SetDirty(song);
                     }
 
+                    if (!MmdWorldLibrary.IsDance(song))
+                        EditorGUILayout.HelpBox("このモーションは踊りではありません（表情だけ・カメラなど）。組み立てでは飛ばします。消すか、踊りの曲の「表情」に入れてください", MessageType.Warning);
                     EditorGUILayout.LabelField($"区切り {MmdWorldLibrary.Segments(song).Count} 個" + (song.seekPoints != null && song.seekPoints.Count > 0 ? "（時刻を直接指定）" : ""), EditorStyles.miniLabel);
                     var (m, a) = MmdWorldLibrary.Lengths(song);
                     string lengths = $"長さ: モーション {Format(m)}" + (song.audio != null ? $" / 音声 {Format(a)}" : " / 音声なし");
@@ -99,7 +115,7 @@ namespace MmdWorld.EditorTools
         void DrawDropArea()
         {
             var rect = GUILayoutUtility.GetRect(0, 48, GUILayout.ExpandWidth(true));
-            GUI.Box(rect, ".vmd と音声（wav / mp3 / ogg）をここにドロップ\n1つの .vmd に1つの音声、または同じ名前どうしを組にして曲を足します", EditorStyles.helpBox);
+            GUI.Box(rect, ".vmd と音声（wav / mp3 / ogg）をここにドロップ（配布物をまとめてでもよい）\n踊りの .vmd ごとに曲を足す。表情だけの .vmd は踊りに重ね、カメラの .vmd は飛ばす。音声が1つなら全部に付ける", EditorStyles.helpBox);
             var e = Event.current;
             if (!rect.Contains(e.mousePosition) || (e.type != EventType.DragUpdated && e.type != EventType.DragPerform)) return;
 
@@ -119,9 +135,12 @@ namespace MmdWorld.EditorTools
             var added = new List<string>();
             try
             {
-                foreach (var (vmd, audio) in PairFiles(paths))
-                    added.Add(MmdWorldLibrary.AddSong(vmd, audio).DisplayTitle);
-                Show($"曲を {added.Count} つ足しました（{string.Join("、", added)}）。「ワールドを組み立て直す」でシーンに反映されます", MessageType.Info);
+                var plan = PlanDropped(paths, MmdWorldLibrary.Classify);
+                foreach (var (vmd, audio, face) in plan.Songs)
+                    added.Add(MmdWorldLibrary.AddSong(vmd, audio, null, face).DisplayTitle);
+                string message = $"曲を {added.Count} つ足しました（{string.Join("、", added)}）。";
+                if (plan.Skipped.Count > 0) message += $"\n曲にしなかったもの: {string.Join("、", plan.Skipped)}。";
+                Show(message + "\n「ワールドを組み立て直す」でシーンに反映されます", added.Count > 0 ? MessageType.Info : MessageType.Warning);
             }
             catch (System.Exception ex)
             {
@@ -129,15 +148,49 @@ namespace MmdWorld.EditorTools
             }
         }
 
-        /// <summary>.vmd と音声を組にする。.vmd と音声が1つずつならその2つ、そうでなければ拡張子を除いた名前が同じものどうし。</summary>
-        public static List<(string vmd, string audio)> PairFiles(IEnumerable<string> paths)
+        public sealed class DropPlan
         {
+            public readonly List<(string vmd, string audio, string face)> Songs = new List<(string, string, string)>();
+            /// <summary>曲にしなかったファイルと理由（カメラ・キー無し・組む相手の無い表情）</summary>
+            public readonly List<string> Skipped = new List<string>();
+        }
+
+        /// <summary>
+        /// ドロップされたファイルから、足す曲を決める。MMD の配布物をまとめて落としてもよいように:
+        /// - 踊りの .vmd ごとに1曲。表情だけの .vmd は踊りに重ねる（1つなら全部に、複数なら名前が近いものに）。カメラ・キー無しは飛ばす
+        /// - 音声は、1つなら全部の曲に、複数なら拡張子を除いた名前が同じものに付ける
+        /// </summary>
+        public static DropPlan PlanDropped(IEnumerable<string> paths, System.Func<string, MmdWorldLibrary.VmdKind> classify)
+        {
+            var plan = new DropPlan();
             var list = paths.ToList();
-            var vmds = list.Where(MmdWorldLibrary.IsVmdFile).ToList();
             var audios = list.Where(MmdWorldLibrary.IsAudioFile).ToList();
-            if (vmds.Count == 1 && audios.Count == 1) return new List<(string, string)> { (vmds[0], audios[0]) };
-            return vmds.Select(v => (v, audios.FirstOrDefault(a =>
-                Path.GetFileNameWithoutExtension(a) == Path.GetFileNameWithoutExtension(v)))).ToList();
+            var dances = new List<string>();
+            var faces = new List<string>();
+            foreach (var vmd in list.Where(MmdWorldLibrary.IsVmdFile))
+            {
+                var kind = classify(vmd);
+                if (kind == MmdWorldLibrary.VmdKind.Dance) dances.Add(vmd);
+                else if (kind == MmdWorldLibrary.VmdKind.Face) faces.Add(vmd);
+                else plan.Skipped.Add($"{Path.GetFileName(vmd)}（{MmdWorldLibrary.KindName(kind)}）");
+            }
+            string Name(string p) => Path.GetFileNameWithoutExtension(p);
+            foreach (var dance in dances)
+            {
+                string audio = audios.Count == 1 ? audios[0] : audios.FirstOrDefault(a => Name(a) == Name(dance));
+                string face = faces.Count == 1 ? faces[0] : faces.OrderByDescending(f => CommonPrefix(Name(f), Name(dance))).FirstOrDefault();
+                plan.Songs.Add((dance, audio, face));
+            }
+            if (dances.Count == 0)
+                foreach (var face in faces) plan.Skipped.Add($"{Path.GetFileName(face)}（表情だけのモーション。踊りの .vmd と一緒にドロップする）");
+            return plan;
+        }
+
+        static int CommonPrefix(string a, string b)
+        {
+            int n = 0;
+            while (n < a.Length && n < b.Length && a[n] == b[n]) n++;
+            return n;
         }
 
         static string ToFullPath(string path) => Path.IsPathRooted(path) ? path : Path.GetFullPath(path);
@@ -170,7 +223,7 @@ namespace MmdWorld.EditorTools
         void DrawSlotAvatars(MmdWorldSettings settings, List<DanceSong> songs)
         {
             EditorGUILayout.LabelField("枠で踊らせるアバター（ワールドに入れる）", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("ワールドに入れておき、人と同じ枠で踊らせるアバター。枠の横の紫のボタンで、その枠で踊るアバターを選びます（人が入っている枠には出ません）。\n" +
+            EditorGUILayout.HelpBox("ワールドに入れておき、人と同じ枠で踊らせるアバター。どの枠で踊らせるかは、ワールドの中でタブレットの「選ぶ」から決めます（人が入っている枠には出ません）。\n" +
                 "VRChat のアバターの prefab もそのまま使えます（Avatar Descriptor などワールドで使えない部品は組み立てのときに外し、揺れものは残します）。シェーダーが lilToon ならワールドのプロジェクトにも lilToon を入れてください。\n" +
                 "ワールドを公開すると、入れたアバターのデータも来た人に配られます。購入したアバターの多くは規約でこれを禁じているので、公開するワールドでは規約で許されたものだけを使ってください。", MessageType.None);
 

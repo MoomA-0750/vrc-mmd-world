@@ -71,11 +71,30 @@ namespace MmdWorld.EditorTools
             // コンポーネントに値を入れられない（outdated behaviour version）。組み立ての前に必ず1回コンパイルする
             UdonSharpCompilerV1.CompileSync();
 
+            // VR で踊りを体に乗せる部品（アバター SDK の VRCSDK3A.dll）が無いと、VR では足踏み・トラッキングが戻らないなどになる。
+            // 警告がコンソールに埋もれて気付けなかったので、エディタから組み立てるときは確かめる
+            if (FindTrackingControlType() == null && !Application.isBatchMode && !ConfirmWithoutTrackingControl()) return;
+
             var settings = MmdWorldSettings.LoadOrCreate();
             _slotCount = Mathf.Clamp(settings.slotCount, 1, 16);
             CreateMissingSongs();
-            var songs = MmdWorldLibrary.Songs();
+            // 表情だけ・カメラの .vmd を曲にしたもの、区切りが無い（短すぎる）ものは飛ばす
+            var songs = new List<DanceSong>();
+            foreach (var song in MmdWorldLibrary.Songs())
+            {
+                if (!MmdWorldLibrary.IsDance(song))
+                    Debug.LogWarning($"[MmdWorld] 「{song.DisplayTitle}」は踊りのモーションではない（表情だけ・カメラなど）ので飛ばす。マネージャーで消すか、踊りの曲の「表情」に入れる");
+                else if (MmdWorldLibrary.Segments(song).Count == 0)
+                    Debug.LogWarning($"[MmdWorld] 「{song.DisplayTitle}」はモーションが短すぎる（区切りが無い）ので飛ばす");
+                else songs.Add(song);
+            }
             Debug.Log($"[MmdWorld] 曲 {songs.Count} 件: {string.Join(", ", songs.Select(s => s.DisplayTitle))}");
+
+            // 表情が別の .vmd になっている曲は、モーションに表情を重ねたクリップを作る
+            AssetDatabase.DeleteAsset(MergedDir);
+            EnsureFolder(MergedDir);
+            var stationClips = songs.Select((s, i) => WithFace(s, MmdWorldLibrary.InPlaceClip(s), $"Song{i}_InPlace")).ToList();
+            var fullClips = songs.Select((s, i) => WithFace(s, s.motion, $"Song{i}")).ToList();
 
             // ステーション用の Controller は、曲 × 区切りの数だけ作り直す（前の分は丸ごと消す）
             AssetDatabase.DeleteAsset(StationDir);
@@ -86,9 +105,9 @@ namespace MmdWorld.EditorTools
             var segmentControllers = new List<RuntimeAnimatorController>();
             for (int i = 0; i < songs.Count; i++)
                 for (int k = 0; k < segments[i].Count; k++)
-                    segmentControllers.Add(BuildStationController(songs[i], i, k, segments[i][k]));
+                    segmentControllers.Add(BuildStationController(stationClips[i], i, k, segments[i][k]));
             Debug.Log($"[MmdWorld] ステーション用の Controller {segmentControllers.Count} 個（区切り: {string.Join(" / ", segments.Select(g => g.Count + " 個"))}）");
-            var previewController = BuildPreviewController(songs);
+            var previewController = BuildPreviewController(fullClips);
             var mannequinMaterial = LoadOrCreateMaterial(GeneratedDir + "/Mannequin.mat", new Color(0.85f, 0.85f, 0.9f));
             var mannequin = MannequinBuilder.BuildPrefab(GeneratedDir + "/Mannequin.prefab", GeneratedDir + "/MannequinAvatar.asset", mannequinMaterial);
 
@@ -153,10 +172,12 @@ namespace MmdWorld.EditorTools
         /// </summary>
         public static void CreateMissingSongs()
         {
+            // 曲のモーションと、曲の表情に使っている .vmd には作らない
             var used = new HashSet<AnimationClip>(AssetDatabase.FindAssets("t:" + nameof(DanceSong))
                 .Select(g => AssetDatabase.LoadAssetAtPath<DanceSong>(AssetDatabase.GUIDToAssetPath(g)))
-                .Where(s => s != null && s.motion != null)
-                .Select(s => s.motion));
+                .Where(s => s != null)
+                .SelectMany(s => new[] { s.motion, s.face })
+                .Where(c => c != null));
 
             foreach (string guid in AssetDatabase.FindAssets("t:AnimationClip", new[] { "Assets" }))
             {
@@ -164,6 +185,13 @@ namespace MmdWorld.EditorTools
                 if (!path.EndsWith(".vmd", StringComparison.OrdinalIgnoreCase)) continue;
                 var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
                 if (clip == null || used.Contains(clip)) continue;
+                // 表情だけ・カメラの .vmd は曲にしない（配布物に一緒に入っていることが多い）
+                var kind = MmdWorldLibrary.Classify(path);
+                if (kind != MmdWorldLibrary.VmdKind.Dance)
+                {
+                    Debug.Log($"[MmdWorld] {path} は{MmdWorldLibrary.KindName(kind)}なので曲にしない");
+                    continue;
+                }
 
                 string dir = Path.GetDirectoryName(path).Replace('\\', '/');
                 var audios = AssetDatabase.FindAssets("t:AudioClip", new[] { dir })
@@ -185,14 +213,13 @@ namespace MmdWorld.EditorTools
         // ---- 曲ごとのアニメーター ----
 
         /// <summary>曲 index の、時刻 startTime から踊り始めるステーション用の Controller。</summary>
-        static AnimatorController BuildStationController(DanceSong song, int index, int segment, float startTime)
+        static AnimatorController BuildStationController(AnimationClip clip, int index, int segment, float startTime)
         {
             string path = $"{StationDir}/Song{index}_Seg{segment}.controller";
             var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
             var sm = controller.layers[0].stateMachine;
             var dance = sm.AddState("Dance");
-            // 体の移動と向きは、DanceSystem がステーションごと動かして出すので、その場で踊るクリップを使う
-            var clip = MmdWorldLibrary.InPlaceClip(song);
+            // 体の移動は、DanceSystem がステーションごと動かして出すので、その場で踊るクリップを使う
             dance.motion = clip;
             // 区切りの時刻から始める（座った瞬間にこのステートが始まる）
             dance.cycleOffset = clip.length > 0f ? startTime / clip.length : 0f;
@@ -257,7 +284,40 @@ namespace MmdWorld.EditorTools
 
         static bool _warnedTrackingControl;
 
-        static AnimatorController BuildPreviewController(List<DanceSong> songs)
+        const string MergedDir = GeneratedDir + "/Merged";
+
+        /// <summary>
+        /// 曲に表情の .vmd（song.face）があれば、body のクリップに表情のカーブを重ねたクリップを作って返す（無ければ body のまま）。
+        /// 表情の .vmd にあるモーフだけを上書きし、踊りの .vmd にしか無いモーフは残す。
+        /// </summary>
+        static AnimationClip WithFace(DanceSong song, AnimationClip body, string name)
+        {
+            if (song.face == null || body == null) return body;
+            var merged = Object.Instantiate(body);
+            merged.name = body.name + "（表情つき）";
+            foreach (var binding in AnimationUtility.GetCurveBindings(song.face))
+                if (binding.type == typeof(SkinnedMeshRenderer))
+                    AnimationUtility.SetEditorCurve(merged, binding, AnimationUtility.GetEditorCurve(song.face, binding));
+            AssetDatabase.CreateAsset(merged, $"{MergedDir}/{name}.anim");
+            return merged;
+        }
+
+        /// <summary>VR で踊りを体に乗せる部品が無いまま組み立ててよいか、エディタで聞く。「DLL を選ぶ」を選んだら入れて続ける。</summary>
+        static bool ConfirmWithoutTrackingControl()
+        {
+            int choice = EditorUtility.DisplayDialogComplex("VR 用の部品がありません",
+                "アバター SDK の VRCSDK3A.dll がこのプロジェクトにありません。\n" +
+                "このまま組み立てると、VR では踊りが体に乗らず（その場で足踏みのようになる）、降りてもトラッキングが戻りません。\n\n" +
+                "アバター用のプロジェクトの Packages/com.vrchat.avatars/Runtime/VRCSDK/Plugins/VRCSDK3A.dll を選ぶと、Assets/LocalOnly/ に写して使います（リポジトリには入りません）。",
+                "DLL を選んで入れる", "やめる", "このまま組み立てる");
+            if (choice == 2) return true;
+            if (choice == 1) return false;
+            if (!MmdWorldLibrary.InstallAvatarSdkDll()) return false;
+            EditorUtility.DisplayDialog("VR 用の部品", "VRCSDK3A.dll を入れました。スクリプトの読み込みが終わったら、もう一度組み立ててください。", "OK");
+            return false;
+        }
+
+        static AnimatorController BuildPreviewController(List<AnimationClip> clips)
         {
             string path = GeneratedDir + "/Preview.controller";
             AssetDatabase.DeleteAsset(path);
@@ -265,16 +325,16 @@ namespace MmdWorld.EditorTools
             var sm = controller.layers[0].stateMachine;
             // Idle は1曲目の最初のフレームで止めておく（何も再生しないと人形が T ポーズのままになる）
             var idle = sm.AddState("Idle");
-            if (songs.Count > 0)
+            if (clips.Count > 0)
             {
-                idle.motion = songs[0].motion;
+                idle.motion = clips[0];
                 idle.speed = 0f;
             }
             sm.defaultState = idle;
-            for (int i = 0; i < songs.Count; i++)
+            for (int i = 0; i < clips.Count; i++)
             {
                 var state = sm.AddState("Song" + i);
-                state.motion = songs[i].motion;
+                state.motion = clips[i];
                 state.iKOnFeet = true;
             }
             return controller;

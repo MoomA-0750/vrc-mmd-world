@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1107 &-9088739037569602441
+--- !u!1107 &-7399285984211720064
 AnimatorStateMachine:
   serializedVersion: 6
   m_ObjectHideFlags: 1
@@ -10,7 +10,7 @@ AnimatorStateMachine:
   m_Name: Base Layer
   m_ChildStates:
   - serializedVersion: 1
-    m_State: {fileID: -7907540127845917944}
+    m_State: {fileID: -6306308783207429333}
     m_Position: {x: 200, y: 0, z: 0}
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
@@ -21,8 +21,8 @@ AnimatorStateMachine:
   m_EntryPosition: {x: 50, y: 120, z: 0}
   m_ExitPosition: {x: 800, y: 120, z: 0}
   m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}
-  m_DefaultState: {fileID: -7907540127845917944}
---- !u!1102 &-7907540127845917944
+  m_DefaultState: {fileID: -6306308783207429333}
+--- !u!1102 &-6306308783207429333
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
@@ -34,7 +34,7 @@ AnimatorState:
   m_CycleOffset: 0.10679957
   m_Transitions: []
   m_StateMachineBehaviours:
-  - {fileID: 4487479817573109113}
+  - {fileID: 3815291799604668630}
   m_Position: {x: 50, y: 50, z: 0}
   m_IKOnFeet: 1
   m_WriteDefaultValues: 0
@@ -61,7 +61,7 @@ AnimatorController:
   m_AnimatorLayers:
   - serializedVersion: 5
     m_Name: Base Layer
-    m_StateMachine: {fileID: -9088739037569602441}
+    m_StateMachine: {fileID: -7399285984211720064}
     m_Mask: {fileID: 0}
     m_Motions: []
     m_Behaviours: []
@@ -71,7 +71,7 @@ AnimatorController:
     m_IKPass: 0
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
---- !u!114 &4487479817573109113
+--- !u!114 &3815291799604668630
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}

@@ -163,7 +163,9 @@ namespace MmdWorld
             if (Utilities.IsValid(dancer))
                 line += " / 枠1 " + dancer.GetPosition().ToString("F2") + " 骨盤 " + dancer.GetBonePosition(HumanBodyBones.Hips).ToString("F2");
             if (slots.Length > 0 && slots[0] != null) line += " / 席 " + slots[0].GetStationRoot().position.ToString("F2") + " 動かした分 " + slots[0].GetDrive().ToString("F2");
-            line += " / 入力 " + _moveX.ToString("F1") + "," + _moveY.ToString("F1");
+            line += " / 入力 " + _moveX.ToString("F1") + "," + _moveY.ToString("F1")
+                + " キー " + (Input.GetKey(KeyCode.W) ? "W" : "") + (Input.GetKey(KeyCode.A) ? "A" : "") + (Input.GetKey(KeyCode.S) ? "S" : "") + (Input.GetKey(KeyCode.D) ? "D" : "")
+                + " 軸 " + Input.GetAxisRaw("Horizontal").ToString("F1") + "," + Input.GetAxisRaw("Vertical").ToString("F1");
             line += " / 曲 " + (_playing ? CurrentTime().ToString("F1") : "-");
             Debug.Log(line);
             SendCustomEventDelayedSeconds(nameof(_AutoTestLogPosition), 2f);

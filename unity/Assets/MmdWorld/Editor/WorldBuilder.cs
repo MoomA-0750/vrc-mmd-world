@@ -66,6 +66,7 @@ namespace MmdWorld.EditorTools
             EnsureProgramAsset<DanceButton>();
             EnsureProgramAsset<DanceTablet>();
             EnsureProgramAsset<DanceSeekBar>();
+            EnsureProgramAsset<DanceStation>();
             // batchmode では U# のコンパイルが走らないことがあり、新しいスクリプトのプログラムが未コンパイルのままだと
             // コンポーネントに値を入れられない（outdated behaviour version）。組み立ての前に必ず1回コンパイルする
             UdonSharpCompilerV1.CompileSync();
@@ -134,6 +135,7 @@ namespace MmdWorld.EditorTools
             system.tabletTitleText = tabletTitle;
             system.tabletStatusText = tabletStatus;
             system.tablet = tablet;
+            system.restoreController = BuildRestoreController();
             system.seekBars = new[] { panelBar, tabletBar };
             UdonSharpEditorUtility.CopyProxyToUdon(system);
 
@@ -195,10 +197,31 @@ namespace MmdWorld.EditorTools
             dance.writeDefaultValues = false;
             // クリップには足の IK の目標（LeftFootT など）を焼いてあるので、体格の違うアバターでも足が MMD の位置に着く
             dance.iKOnFeet = true;
-            AddTrackingControl(dance);
+            AddTrackingControl(dance, "Animation");
             sm.defaultState = dance;
             return controller;
         }
+
+        /// <summary>
+        /// 降りる前に座り直す Controller。VRC Animator Tracking Control で全身をトラッキングに戻すだけ（踊りの Controller が Animation にしたままだと、降りても戻らない）。
+        /// トラッキング制御の部品が無ければ作らない（null）。
+        /// </summary>
+        static AnimatorController BuildRestoreController()
+        {
+            if (FindTrackingControlType() == null) return null;
+            string path = $"{StationDir}/Restore.controller";
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            var sm = controller.layers[0].stateMachine;
+            var restore = sm.AddState("Restore");
+            restore.writeDefaultValues = false;
+            AddTrackingControl(restore, "Tracking");
+            sm.defaultState = restore;
+            return controller;
+        }
+
+        static Type FindTrackingControlType() => AppDomain.CurrentDomain.GetAssemblies()
+            .Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl"))
+            .FirstOrDefault(t => t != null);
 
         static readonly string[] TrackingParts =
         {
@@ -209,13 +232,11 @@ namespace MmdWorld.EditorTools
         /// <summary>
         /// VR では、座っていても頭・手・足がトラッキングのままで踊りを上書きする。座っている間は全身を踊りに任せるよう、VRC Animator Tracking Control を付ける。
         /// この部品はアバターの SDK（VRCSDK3A.dll）にしかなく、ワールドの SDK には無い。DLL をプロジェクトに入れてある（README）ときだけ付け、無ければ警告する。
-        /// 降りるとステーションの Controller が外れ、トラッキングは元に戻る。
+        /// 降りてもトラッキングは自動では戻らないので、DanceSystem が降りる前に BuildRestoreController の Controller へ座り直す。
         /// </summary>
-        static void AddTrackingControl(AnimatorState state)
+        static void AddTrackingControl(AnimatorState state, string trackingType)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl"))
-                .FirstOrDefault(t => t != null);
+            var type = FindTrackingControlType();
             if (type == null)
             {
                 if (!_warnedTrackingControl)
@@ -227,7 +248,7 @@ namespace MmdWorld.EditorTools
             foreach (var part in TrackingParts)
             {
                 var field = type.GetField(part);
-                if (field != null) field.SetValue(behaviour, Enum.Parse(field.FieldType, "Animation"));
+                if (field != null) field.SetValue(behaviour, Enum.Parse(field.FieldType, trackingType));
             }
             EditorUtility.SetDirty(behaviour);
         }
@@ -471,7 +492,8 @@ namespace MmdWorld.EditorTools
                 var stationGo = new GameObject(stationName);
                 stationGo.transform.SetParent(stationRoot.transform, false);
                 var station = stationGo.AddComponent<VRCStation>();
-                station.PlayerMobility = VRC.SDKBase.VRCStation.Mobility.Immobilize;
+                // 踊りの軌跡とスティックでステーションごと動かすので、動くステーション向けの固定にする
+                station.PlayerMobility = VRC.SDKBase.VRCStation.Mobility.ImmobilizeForVehicle;
                 station.seated = false;
                 station.canUseStationFromStation = true;
                 // 歩く操作で降りないようにする（踊っている間は、スティック・WASD で DanceSystem が枠ごと動かす）。降りるのは枠の台・タブレットの「踊る / やめる」・停止から
@@ -480,6 +502,10 @@ namespace MmdWorld.EditorTools
                 station.stationEnterPlayerLocation = stationGo.transform;
                 station.stationExitPlayerLocation = root.transform;
                 stationList.Add(station);
+                // 誰が入った・出たかを DanceSystem に知らせる（座らせていないのに入ったら降ろす）
+                var events = UdonSharpUndo.AddComponent<DanceStation>(stationGo);
+                events.system = system;
+                UdonSharpEditorUtility.CopyProxyToUdon(events);
             }
 
             // ワールドのアバターを選ぶボタン（アバターが1体もいないワールドでは押しても何も起きない）

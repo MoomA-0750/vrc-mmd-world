@@ -193,7 +193,7 @@ namespace MmdWorld.EditorTools
                 system.autoTestViewPoint = null;
                 UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(system);
             }
-            SetStationMobility(VRC.SDKBase.VRCStation.Mobility.Immobilize);
+            SetStationMobility(VRC.SDKBase.VRCStation.Mobility.ImmobilizeForVehicle);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             Debug.Log("[MmdWorld.Command] 自動確認のために入れたものをシーンから消した");

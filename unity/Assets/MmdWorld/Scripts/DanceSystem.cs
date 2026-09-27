@@ -42,6 +42,10 @@ namespace MmdWorld
         public DanceTablet tablet;
         [Tooltip("再生位置・範囲・区切りを示すバー（パネルとタブレット）")]
         public DanceSeekBar[] seekBars;
+        [Tooltip("降りる前に座り直す、トラッキングを元に戻すだけの Controller（VRC Animator Tracking Control で全身を Tracking にする）。無ければそのまま降りる")]
+        public RuntimeAnimatorController restoreController;
+        [Tooltip("トラッキングを戻す Controller に座ってから降りるまでの秒数")]
+        public float restoreSeconds = 0.5f;
 
         [Header("踊りながら動く")]
         [Tooltip("踊っている間、スティック・WASD で自分の枠（ステーションの親）ごと動けるようにする。前は、VR では頭の向き、デスクトップでは枠の向き")]
@@ -111,6 +115,8 @@ namespace MmdWorld
         [UdonSynced] int _seekSeq;
 
         VRCStation _localStation;
+        /// <summary>トラッキングを戻すために座り直したステーション（restoreSeconds 後に降りる）</summary>
+        VRCStation _restoreStation;
         /// <summary>シークを受けたあと、次に区切りをまたいだところで、もう一方のステーションへ乗り換える</summary>
         bool _switchPending;
         bool _previewStarted;
@@ -689,12 +695,64 @@ namespace MmdWorld
             }
         }
 
+        /// <summary>
+        /// 自分をステーションから降ろす。VR ではステーションの Controller が VRC Animator Tracking Control で全身を踊りに任せているので、
+        /// そのまま降りるとトラッキングが戻らない。先にもう一方のステーションへ、トラッキングを戻すだけの Controller で乗り換え、少し待ってから降りる。
+        /// </summary>
         void LeaveLocalStation()
         {
             if (_localStation == null) return;
-            Debug.Log("[MmdWorld] ステーションから降りる");
-            _localStation.ExitStation(Networking.LocalPlayer);
+            var station = _localStation;
             _localStation = null;
+            _switchPending = false;
+            var other = OtherStation(station);
+            if (restoreController != null && other != null)
+            {
+                Debug.Log("[MmdWorld] トラッキングを戻してから降りる");
+                other.animatorController = restoreController;
+                _restoreStation = other;
+                other.UseStation(Networking.LocalPlayer);
+                SendCustomEventDelayedSeconds(nameof(_FinishLeave), restoreSeconds);
+                return;
+            }
+            Debug.Log("[MmdWorld] ステーションから降りる");
+            station.ExitStation(Networking.LocalPlayer);
+        }
+
+        public void _FinishLeave()
+        {
+            if (_restoreStation == null) return;
+            Debug.Log("[MmdWorld] ステーションから降りる");
+            var station = _restoreStation;
+            _restoreStation = null;
+            station.ExitStation(Networking.LocalPlayer);
+        }
+
+        /// <summary>同じ枠のもう一方のステーション。</summary>
+        VRCStation OtherStation(VRCStation station)
+        {
+            foreach (var slot in slots)
+            {
+                if (slot == null) continue;
+                for (int i = 0; i < slot.StationCount(); i++)
+                    if (slot.GetStation(i) == station) return slot.GetStation(1 - i);
+            }
+            return null;
+        }
+
+        /// <summary>DanceStation から: 自分がステーションに入った。自分が座らせたのでなければ（ステーションを直接選んだなど）、すぐ降ろす。</summary>
+        public void _OnLocalStationEntered(VRCStation station)
+        {
+            if (station == _localStation || station == _restoreStation) return;
+            Debug.Log("[MmdWorld] 座らせていないのにステーションに入ったので、降ろす: " + station.gameObject.name);
+            _localStation = station;
+            LeaveLocalStation();
+        }
+
+        /// <summary>DanceStation から: 自分がステーションから出た（リスポーンなど、こちらが降ろしたのでない場合も含む）。</summary>
+        public void _OnLocalStationExited(VRCStation station)
+        {
+            if (station == _localStation) _localStation = null;
         }
 
         /// <summary>

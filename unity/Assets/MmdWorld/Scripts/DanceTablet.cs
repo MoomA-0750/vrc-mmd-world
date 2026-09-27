@@ -10,10 +10,11 @@ namespace MmdWorld
     /// 手元に浮かぶタブレット。踊っている間（ステーションに固定されている間）でも、再生・停止・シークなどを操作できる。
     /// 自分の手元でだけ動かす（同期しない。ほかの人には、その人のタブレットがその人の手元に出る）。
     ///
-    /// VR: 左手のグリップで出し入れする。左手のひらの少し上に浮かべ、画面を自分の目の方へ向ける（スマートフォンを持つような位置）。
+    /// VR: 左手のグリップで出し入れする。出したときに左手のひらの少し上・画面を目の方へ向けた位置に置き、そのときの手との位置関係のまま、手の位置と向きに付いていく。
     ///     踊っている間はアバターの手が踊りで動くので、アバターの手ではなく、実際の左右のコントローラーの位置を使う。右手の指先は目印の球で示す。
     ///     指先がボタンに近づくと明るくなり、面を押し込むと押したことになって、振動で知らせる。
     /// デスクトップ: T キーで出し入れする。踊ると視点が回ってマウスでは狙えないので、画面の下に固定して、ボタンに書いたキーで押す。
+    /// どちらも、スティック・WASD で移動しようとしたら消す。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class DanceTablet : UdonSharpBehaviour
@@ -44,6 +45,8 @@ namespace MmdWorld
         public float palmTowardEyes = 0.03f;
         [Tooltip("VR での大きさ（1 で幅 38cm）")]
         public float vrScale = 0.55f;
+        [Tooltip("スティック・WASD をこれより倒したら消す")]
+        public float hideOnMove = 0.5f;
         [Tooltip("デスクトップ: 頭からどこに置くか（視点についてくる）")]
         public Vector3 desktopOffset = new Vector3(0f, -0.14f, 0.8f);
         [Tooltip("右手のコントローラーから指先までのずれ（コントローラーの向きのローカル座標、メートル）")]
@@ -63,6 +66,9 @@ namespace MmdWorld
         bool[] _pressed;
         /// <summary>ボタンの見た目の状態（0: ふつう、1: 近い、2: 押している）。変わったときだけ色を塗り直す</summary>
         int[] _shown;
+        /// <summary>出したときの、左手から見たタブレットの位置と向き（VR）</summary>
+        Vector3 _handOffset;
+        Quaternion _handRotation;
 
         void Start()
         {
@@ -86,7 +92,32 @@ namespace MmdWorld
         /// <summary>出し入れする（タブレットの「閉じる」ボタンからも呼ぶ）。</summary>
         public void Toggle()
         {
+            if (!_visible && _vr) AttachToHand();
             SetVisible(!_visible);
+        }
+
+        /// <summary>左手のひらの少し上・画面を目の方へ向けた位置に置き、そのときの左手との位置関係を覚える。</summary>
+        void AttachToHand()
+        {
+            var head = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).position;
+            var hand = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.LeftHand);
+            var toEyes = head - hand.position;
+            var position = hand.position + Vector3.up * palmHeight + (toEyes.sqrMagnitude > 1e-4f ? toEyes.normalized * palmTowardEyes : Vector3.zero);
+            var look = position - head;
+            var rotation = look.sqrMagnitude > 1e-4f ? Quaternion.LookRotation(look, Vector3.up) : hand.rotation;
+            var inverse = Quaternion.Inverse(hand.rotation);
+            _handOffset = inverse * (position - hand.position);
+            _handRotation = inverse * rotation;
+        }
+
+        public override void InputMoveHorizontal(float value, UdonInputEventArgs args)
+        {
+            if (_visible && Mathf.Abs(value) > hideOnMove) SetVisible(false);
+        }
+
+        public override void InputMoveVertical(float value, UdonInputEventArgs args)
+        {
+            if (_visible && Mathf.Abs(value) > hideOnMove) SetVisible(false);
         }
 
         public void Hide()
@@ -117,13 +148,9 @@ namespace MmdWorld
             }
             if (!_visible) return;
 
-            // 左手のひらの少し上に浮かべ、画面（-Z）を目の方へ向ける
-            var head = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).position;
-            var left = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.LeftHand).position;
-            var toEyes = head - left;
-            var position = left + Vector3.up * palmHeight + (toEyes.sqrMagnitude > 1e-4f ? toEyes.normalized * palmTowardEyes : Vector3.zero);
-            var look = position - head;
-            if (look.sqrMagnitude > 1e-4f) transform.SetPositionAndRotation(position, Quaternion.LookRotation(look, Vector3.up));
+            // 出したときの左手との位置関係のまま、手の位置と向きに付いていく
+            var hand = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.LeftHand);
+            transform.SetPositionAndRotation(hand.position + hand.rotation * _handOffset, hand.rotation * _handRotation);
 
             var right = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.RightHand);
             var tip = right.position + right.rotation * fingerOffset;
@@ -162,6 +189,12 @@ namespace MmdWorld
         {
             if (Input.GetKeyDown(desktopToggleKey)) Toggle();
             if (!_visible) return;
+            // 座っている間は VRChat が移動のイベントを渡さないことがあるので、WASD も直接見る
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D))
+            {
+                SetVisible(false);
+                return;
+            }
             // 視点についてくる（画面の下に固定）
             var head = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
             transform.SetPositionAndRotation(head.position + head.rotation * desktopOffset, head.rotation);

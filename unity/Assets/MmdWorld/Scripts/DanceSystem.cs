@@ -289,13 +289,13 @@ namespace MmdWorld
             SendCustomEventDelayedSeconds(nameof(_AutoTestTabletClose), 12f);
         }
 
-        /// <summary>「選ぶ」のページを開き、枠2を選んでアバター「なし」、曲の1番目を押して、戻る。</summary>
+        /// <summary>「選ぶ」のページを開き、枠2を選んでワールドのアバターの1体目を置き、曲の1番目を押して、戻る。</summary>
         public void _AutoTestTabletSelect()
         {
             if (tablet == null) return;
             tablet.Press(14); // 選ぶ
             tablet.Press(20); // 枠2
-            tablet.Press(18); // アバター: なし
+            tablet.Press(21); // アバターの1体目（無ければ何も起きない）
             tablet.Press(16); // 曲の1番目
             SendCustomEventDelayedSeconds(nameof(_AutoTestTabletBack), 4f);
         }

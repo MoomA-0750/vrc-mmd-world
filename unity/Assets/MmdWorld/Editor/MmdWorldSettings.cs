@@ -21,7 +21,7 @@ namespace MmdWorld.EditorTools
         [Tooltip("お手本として舞台の横で踊らせる Humanoid のモデル。空なら付属の人形")]
         public List<GameObject> previewDancers = new List<GameObject>();
 
-        [Tooltip("ワールドに入れて、人と同じ枠で踊らせるアバター（Humanoid のモデルや VRChat のアバターの prefab）。枠の横のボタンで選ぶ")]
+        [Tooltip("ワールドに入れて、人と同じ枠で踊らせるアバター（Humanoid のモデルや VRChat のアバターの prefab）。どの枠で踊らせるかはタブレットの「選ぶ」で決める")]
         public List<GameObject> slotAvatars = new List<GameObject>();
 
         [Tooltip("着替え用の台に置くアバターの ID（avtr_...）。VRChat にアップロード済みで、公開（Public）のアバターだけが使える")]

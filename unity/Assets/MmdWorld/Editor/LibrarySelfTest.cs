@@ -134,16 +134,15 @@ namespace MmdWorld.EditorTools
                 var slots = UnityEngine.Object.FindObjectsOfType<DanceSlot>(true);
                 Check(slots.Length == 6, "枠が6つになる: " + slots.Length);
                 {
-                    // 足した曲のステーションのクリップに、表情の .vmd の「あ」（30 フレームで 0.77）が重なっている
+                    // 足した曲のステーションのクリップに、表情の .vmd の「あ」（30 フレームで 0.77。ブレンドシェイプの重みは 0〜100 なので 77）が重なっている
                     var sys = UnityEngine.Object.FindObjectsOfType<DanceSystem>(true).First();
                     int index = Array.IndexOf(sys.songTitles, "自己テスト/曲:1");
                     var controller = index >= 0 ? sys.segmentControllers[sys.segmentStart[index]] as UnityEditor.Animations.AnimatorController : null;
                     var clip = controller != null ? controller.layers[0].stateMachine.defaultState.motion as AnimationClip : null;
                     var binding = clip != null ? AnimationUtility.GetCurveBindings(clip).FirstOrDefault(b => b.propertyName == "blendShape.あ") : default;
                     var curve = clip != null && binding.propertyName != null ? AnimationUtility.GetEditorCurve(clip, binding) : null;
-                    var faceNames = song != null && song.face != null ? string.Join(",", AnimationUtility.GetCurveBindings(song.face).Where(b => b.type == typeof(SkinnedMeshRenderer)).Select(b => b.path + ":" + b.propertyName)) : "（表情なし）";
-                    Check(curve != null && Mathf.Abs(curve.Evaluate(1f) - 0.77f) < 0.01f,
-                          $"表情の .vmd がステーションのクリップに重なる（曲 {index}、クリップ {(clip != null ? clip.name : "なし")}、あ = {(curve != null ? curve.Evaluate(1f).ToString("F2") : "無し")}、表情のカーブ {faceNames}）");
+                    Check(curve != null && Mathf.Abs(curve.Evaluate(1f) - 77f) < 0.5f,
+                          $"表情の .vmd がステーションのクリップに重なる（クリップ {(clip != null ? clip.name : "なし")}、1秒の「あ」= {(curve != null ? curve.Evaluate(1f).ToString("F1") : "無し")}）");
                 }
                 int songCount = MmdWorldLibrary.Songs().Count;
                 Check(slots.All(s => s.stations.Length == 2 && s.stations.All(st => st != null) && s.stationRoot != null), "どの枠にもステーションが2つ（交互に乗り換える用）ある");

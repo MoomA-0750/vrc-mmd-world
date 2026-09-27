@@ -455,8 +455,8 @@ namespace MmdWorld.EditorTools
             UdonSharpEditorUtility.CopyProxyToUdon(ab);
 
             var label = CreateText(root.transform, "Label", "空き", 60, new Vector2(500, 200));
-            label.transform.position = root.transform.position + new Vector3(0f, 2.2f, 0f);
-            label.transform.rotation = Quaternion.identity;
+            label.transform.parent.position = root.transform.position + new Vector3(0f, 2.2f, 0f);
+            label.transform.parent.rotation = Quaternion.identity;
 
             slot.system = system;
             slot.stations = stationList.ToArray();
@@ -481,9 +481,9 @@ namespace MmdWorld.EditorTools
             board.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Board.mat", new Color(0.08f, 0.08f, 0.1f));
 
             var title = CreateText(panel.transform, "Title", "曲", 60, new Vector2(850, 120));
-            title.transform.localPosition = new Vector3(0f, 1.74f, 0f);
+            title.transform.parent.localPosition = new Vector3(0f, 1.74f, 0f);
             var status = CreateText(panel.transform, "Status", "停止中", 44, new Vector2(880, 140));
-            status.transform.localPosition = new Vector3(0f, 1.5f, 0f);
+            status.transform.parent.localPosition = new Vector3(0f, 1.5f, 0f);
 
             // 3 段: 曲と再生 / シーク・プレビュー・ループ / 範囲
             var buttons = new[]
@@ -510,7 +510,7 @@ namespace MmdWorld.EditorTools
                 UdonSharpEditorUtility.CopyProxyToUdon(db);
 
                 var label = CreateText(panel.transform, "Label_" + evt, text, 36, new Vector2(200, 80));
-                label.transform.localPosition = new Vector3(bx, by, -0.04f);
+                label.transform.parent.localPosition = new Vector3(bx, by, -0.04f);
             }
             return (title, status);
         }
@@ -534,9 +534,9 @@ namespace MmdWorld.EditorTools
             board.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Board.mat", new Color(0.08f, 0.08f, 0.1f));
 
             var title = CreateText(body.transform, "Title", "曲", 18, new Vector2(360, 26));
-            title.transform.localPosition = new Vector3(0f, 0.135f, -0.001f);
+            title.transform.parent.localPosition = new Vector3(0f, 0.135f, -0.001f);
             var status = CreateText(body.transform, "Status", "停止中", 13, new Vector2(360, 40));
-            status.transform.localPosition = new Vector3(0f, 0.1f, -0.001f);
+            status.transform.parent.localPosition = new Vector3(0f, 0.1f, -0.001f);
 
             var defs = new (string text, string evt, KeyCode key, int col, int row, int span, bool onTablet)[]
             {
@@ -577,13 +577,13 @@ namespace MmdWorld.EditorTools
                 keys.Add(KeyInputName(d.key));
 
                 var label = CreateText(body.transform, "Label_" + d.evt, d.text, 12, new Vector2(w * 1000f, h * 1000f));
-                label.transform.localPosition = new Vector3(x, y, -0.001f);
+                label.transform.parent.localPosition = new Vector3(x, y, -0.001f);
                 if (d.key != KeyCode.None)
                 {
                     var keyLabel = CreateText(body.transform, "Key_" + d.evt, "[" + KeyName(d.key) + "]", 8, new Vector2(w * 1000f, h * 1000f));
                     keyLabel.alignment = TextAnchor.UpperLeft;
                     keyLabel.color = new Color(1f, 0.85f, 0.3f);
-                    keyLabel.transform.localPosition = new Vector3(x + 0.003f, y - 0.002f, -0.0015f);
+                    keyLabel.transform.parent.localPosition = new Vector3(x + 0.003f, y - 0.002f, -0.0015f);
                     keyLabels.Add(keyLabel.transform.parent.gameObject);
                 }
             }
@@ -630,7 +630,10 @@ namespace MmdWorld.EditorTools
             _ => key.ToString().Replace("Alpha", ""),
         };
 
-        /// <summary>ワールド空間の Canvas に Text を1つ置く。1 ピクセル = 1mm。</summary>
+        /// <summary>
+        /// ワールド空間の Canvas に Text を1つ置く。1 ピクセル = 1mm。
+        /// 返すのは中の Text なので、置く位置は Canvas（text.transform.parent）に設定する（Text の方に設定すると 1/1000 で効いて中央に固まる）。
+        /// </summary>
         static Text CreateText(Transform parent, string name, string text, int fontSize, Vector2 size)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Canvas));

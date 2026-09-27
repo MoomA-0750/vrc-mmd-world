@@ -35,7 +35,7 @@ namespace MmdWorld
         [Tooltip("VR: 出したとき、頭からどこに置くか（頭の向きの前・下）")]
         public Vector3 vrOffset = new Vector3(0f, -0.28f, 0.38f);
         [Tooltip("デスクトップ: 頭からどこに置くか（視点についてくる）")]
-        public Vector3 desktopOffset = new Vector3(0f, -0.2f, 0.55f);
+        public Vector3 desktopOffset = new Vector3(0f, -0.14f, 0.8f);
         [Tooltip("右手のコントローラーから指先までのずれ（コントローラーの向きのローカル座標、メートル）")]
         public Vector3 fingerOffset = new Vector3(0f, -0.02f, 0.07f);
 

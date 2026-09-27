@@ -49,23 +49,20 @@ namespace MmdWorld
 
         [Header("踊りながら動く")]
         [Tooltip("踊っている間、スティック・WASD で自分の枠（ステーションの親）ごと動けるようにする。前は、VR では頭の向き、デスクトップでは枠の向き")]
-        public bool driveWhileDancing = true;
+        public bool driveWhileDancing = false;
         [Tooltip("動く速さ（メートル/秒）")]
         public float driveSpeed = 1.5f;
         [Tooltip("枠の位置からどこまで離れられるか（メートル）")]
         public float driveRadius = 4f;
 
         [Header("体の軌跡（ワールドを組み立てるメニューが入れる）")]
-        [Tooltip("全曲ぶんをつなげた軌跡。位置は目の高さを 1 とした値、向きは度")]
+        [Tooltip("全曲ぶんをつなげた軌跡（床の上の位置）。目の高さを 1 とした値。向きはステーションのクリップに入っているので持たない")]
         public float[] trajX;
         public float[] trajZ;
-        public float[] trajYaw;
         [Tooltip("曲ごとの、軌跡の始まりの位置・数・1秒あたりのサンプル数")]
         public int[] trajStart;
         public int[] trajCount;
         public float[] trajRate;
-        [Tooltip("回る振りをステーションごと回して出す（踊る人の視点も回る）。オフなら位置だけ動かす")]
-        public bool rotateStations = true;
 
         [Header("区切り（ワールドを組み立てるメニューが入れる）")]
         [Tooltip("全曲ぶんをつなげた、区切りの時刻（秒）と、その時刻から始まるステーション用の Controller")]
@@ -763,7 +760,7 @@ namespace MmdWorld
         /// </summary>
         void MoveStations(int song, float t)
         {
-            float x = 0f, z = 0f, yaw = 0f;
+            float x = 0f, z = 0f;
             if (trajCount != null && song < trajCount.Length && trajCount[song] >= 2)
             {
                 float f = Mathf.Clamp(t * trajRate[song], 0f, trajCount[song] - 1.001f);
@@ -772,7 +769,6 @@ namespace MmdWorld
                 int k = trajStart[song] + i;
                 x = Mathf.Lerp(trajX[k], trajX[k + 1], a);
                 z = Mathf.Lerp(trajZ[k], trajZ[k + 1], a);
-                yaw = Mathf.Lerp(trajYaw[k], trajYaw[k + 1], a);
             }
             foreach (var slot in slots)
             {
@@ -784,7 +780,8 @@ namespace MmdWorld
                 float eye = dancer.GetAvatarEyeHeightAsMeters();
                 // 踊っている人がスティック・WASD で動かした分を足す
                 station.transform.localPosition = new Vector3(x * eye, 0f, z * eye) + slot.GetDrive();
-                station.transform.localRotation = rotateStations ? Quaternion.Euler(0f, yaw, 0f) : Quaternion.identity;
+                // 向きはステーションのクリップに入っているので回さない（回すと VR では視点も回る）
+                station.transform.localRotation = Quaternion.identity;
             }
         }
 

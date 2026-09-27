@@ -11,7 +11,7 @@ namespace MmdWorld.Vmd
     public sealed class VmdImporter : ScriptedImporter
     {
         /// <summary>2: 足の IK の目標を焼く・親指０ の無い形に合わせる　3: その場で踊るクリップと軌跡を足す　4: その場で踊るクリップをループにする（cycleOffset を効かせる）</summary>
-        public const int Version = 4;
+        public const int Version = 5;
 
         [Tooltip("モーションを作ったモデルの腕が、初期姿勢で水平から何度下がっているか")]
         public float armAngle = 35f;

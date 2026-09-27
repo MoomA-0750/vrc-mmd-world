@@ -129,7 +129,6 @@ namespace MmdWorld.EditorTools
             system.slotAvatars = slotAvatars.ToArray();
             system.slotAvatarNames = slotAvatars.Select(a => a.name).ToArray();
             system.countdownSeconds = settings.countdownSeconds;
-            system.rotateStations = settings.rotateDancers;
             system.titleText = title;
             system.statusText = status;
             system.tabletTitleText = tabletTitle;
@@ -286,7 +285,6 @@ namespace MmdWorld.EditorTools
         {
             var xs = new List<float>();
             var zs = new List<float>();
-            var yaws = new List<float>();
             var starts = new List<int>();
             var counts = new List<int>();
             var rates = new List<float>();
@@ -303,11 +301,9 @@ namespace MmdWorld.EditorTools
                 }
                 xs.AddRange(tr.x);
                 zs.AddRange(tr.z);
-                yaws.AddRange(tr.yaw);
             }
             system.trajX = xs.ToArray();
             system.trajZ = zs.ToArray();
-            system.trajYaw = yaws.ToArray();
             system.trajStart = starts.ToArray();
             system.trajCount = counts.ToArray();
             system.trajRate = rates.ToArray();

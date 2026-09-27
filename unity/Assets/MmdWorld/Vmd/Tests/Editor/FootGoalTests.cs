@@ -248,10 +248,10 @@ namespace MmdWorld.Vmd.Tests
                     for (int i = 0; i < trajectory.Count; i += 30)
                     {
                         float t = i / trajectory.sampleRate;
-                        // ステーションと同じく、親（リグのルート）を軌跡の位置と向きに置く
+                        // ステーションと同じく、親（リグのルート）を軌跡の位置に置く（向きはクリップに残してある）
                         b.Root.transform.SetPositionAndRotation(
                             new Vector3(trajectory.x[i], 0f, trajectory.z[i]) * trajectory.eyeHeight,
-                            Quaternion.Euler(0f, trajectory.yaw[i], 0f));
+                            Quaternion.identity);
                         pa.Evaluate(t);
                         pb.Evaluate(t);
                         var ha = ra.GetBoneTransform(HumanBodyBones.Hips);

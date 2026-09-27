@@ -58,36 +58,19 @@ namespace MmdWorld.Vmd
                 previousYaw = yaw;
             }
 
-            // その場で踊るクリップ: 床の上の位置を 0 に、体の向きから左右の回転を抜く（前後・左右の傾きは残す）
+            // その場で踊るクリップ: 床の上の位置だけを 0 にする。体の向き（左右の回転）はクリップに残す。
+            // 向きまでステーションで回すと、VR では視点（プレイエリア）もステーションごと回ってしまうため、体だけをアニメーションで回す
             var inPlace = Object.Instantiate(clip);
             var keysT = curves["RootT.x"].keys;
             var zeroX = new Keyframe[keysT.Length];
             var zeroZ = new Keyframe[keysT.Length];
-            var qx = new Keyframe[keysT.Length];
-            var qy = new Keyframe[keysT.Length];
-            var qz = new Keyframe[keysT.Length];
-            var qw = new Keyframe[keysT.Length];
-            Quaternion previous = Quaternion.identity;
             for (int i = 0; i < keysT.Length; i++)
             {
-                float t = keysT[i].time;
-                zeroX[i] = new Keyframe(t, 0f);
-                zeroZ[i] = new Keyframe(t, 0f);
-                var q = RootQ(curves, t);
-                var tilt = Quaternion.Inverse(Quaternion.Euler(0f, Yaw(q), 0f)) * q;
-                if (i > 0 && Quaternion.Dot(tilt, previous) < 0f) tilt = new Quaternion(-tilt.x, -tilt.y, -tilt.z, -tilt.w);
-                previous = tilt;
-                qx[i] = new Keyframe(t, tilt.x);
-                qy[i] = new Keyframe(t, tilt.y);
-                qz[i] = new Keyframe(t, tilt.z);
-                qw[i] = new Keyframe(t, tilt.w);
+                zeroX[i] = new Keyframe(keysT[i].time, 0f);
+                zeroZ[i] = new Keyframe(keysT[i].time, 0f);
             }
             Set(inPlace, "RootT.x", zeroX);
             Set(inPlace, "RootT.z", zeroZ);
-            Set(inPlace, "RootQ.x", qx);
-            Set(inPlace, "RootQ.y", qy);
-            Set(inPlace, "RootQ.z", qz);
-            Set(inPlace, "RootQ.w", qw);
 
             // ステーションでは、区切りの時刻から始める Controller をステートの cycleOffset で作る。
             // cycleOffset はループするクリップにしか効かないので、ループにする（曲の終わりで先頭へ戻るが、範囲の終わりでステーションから降ろす）

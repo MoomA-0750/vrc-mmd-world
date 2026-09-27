@@ -231,13 +231,11 @@ namespace MmdWorld.EditorTools
             EditorGUI.BeginChangeCheck();
             int slots = EditorGUILayout.IntSlider("踊る人の枠", settings.slotCount, 1, 16);
             float countdown = EditorGUILayout.Slider("カウントダウン（秒）", settings.countdownSeconds, 0f, 10f);
-            bool rotate = EditorGUILayout.Toggle(new GUIContent("回る振りを出す", "ステーションごと回して、回る振りを出す。踊る人の視点も回るので、VR で酔いやすい人はオフに（ほかの人から見ても回らなくなる）"), settings.rotateDancers);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(settings, "ワールドの設定");
                 settings.slotCount = slots;
                 settings.countdownSeconds = countdown;
-                settings.rotateDancers = rotate;
                 Save(settings);
             }
             int controllers = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);

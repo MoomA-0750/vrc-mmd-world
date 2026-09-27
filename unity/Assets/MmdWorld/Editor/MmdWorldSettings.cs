@@ -18,9 +18,6 @@ namespace MmdWorld.EditorTools
         [Tooltip("再生を押してから始まるまでの秒数")]
         [Range(0f, 10f)] public float countdownSeconds = 3f;
 
-        [Tooltip("回る振りを、ステーションごと回して出す。オフにすると踊る人の視点は回らない（VR で酔いにくい）が、ほかの人から見ても回らなくなる")]
-        public bool rotateDancers = true;
-
         [Tooltip("お手本として舞台の横で踊らせる Humanoid のモデル。空なら付属の人形")]
         public List<GameObject> previewDancers = new List<GameObject>();
 

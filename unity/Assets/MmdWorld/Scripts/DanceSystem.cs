@@ -1129,6 +1129,8 @@ namespace MmdWorld
         void ShowIdle()
         {
             string title = SongCount() == 0 ? "曲がありません" : (_songIndex + 1) + "/" + SongCount() + "  " + songTitles[_songIndex];
+            // VR 用の部品（アバター SDK の VRCSDK3A.dll）が無いまま組み立てたワールドでは、VR で足踏みになり、降りてもトラッキングが戻らない。ワールドの中でも気付けるように出す
+            if (restoreControllers == null || restoreControllers.Length == 0) title += "\n（VR 用の部品なし: VR では足踏みになります）";
             if (titleText != null) titleText.text = title;
             if (tabletTitleText != null) tabletTitleText.text = title;
             if (!_playing && !_localPreview) SetStatus("停止中" + (SongCount() > 0 ? RangeLabel(_songIndex) : ""));

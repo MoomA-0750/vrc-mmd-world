@@ -15,6 +15,5 @@ MonoBehaviour:
   slotCount: 4
   countdownSeconds: 3
   previewDancers: []
-  slotAvatars:
-  - {fileID: 7153414265542788588, guid: 37d378c42fc39ca45a6b1eeb842afb5f, type: 3}
+  slotAvatars: []
   pedestalAvatarIds: []

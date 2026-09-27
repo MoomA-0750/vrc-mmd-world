@@ -28,10 +28,54 @@ namespace MmdWorld
         [UdonSynced] int _dancerId = -1;
         /// <summary>この枠で踊らせるワールドのアバターの番号（DanceSystem.slotAvatars）。-1 なら無し。人が入っている枠には割り当てない</summary>
         [UdonSynced] int _avatarIndex = -1;
+        /// <summary>踊っている人がスティック・WASD で動かした分（ステーションの親のローカル座標、XZ、メートル）。踊っている人（この枠の持ち主）が書く</summary>
+        [UdonSynced] Vector3 _drive;
+        /// <summary>表示に使う値。持ち主はそのまま、ほかの人は同期された値を滑らかに追う</summary>
+        Vector3 _shownDrive;
+        bool _driveDirty;
+        float _lastDriveSend;
+        const float DriveSendInterval = 0.2f;
 
         void Start()
         {
             Refresh();
+        }
+
+        void Update()
+        {
+            if (IsLocalDancer())
+            {
+                // 動かしている間は 0.2 秒おきに送り、止めたら最後の値を送る
+                if (_driveDirty && Time.time - _lastDriveSend >= DriveSendInterval) SendDrive();
+            }
+            else
+            {
+                _shownDrive = Vector3.Lerp(_shownDrive, _drive, 1f - Mathf.Exp(-8f * Time.deltaTime));
+            }
+        }
+
+        /// <summary>踊っている人が動かした分（ステーションの親のローカル座標）。</summary>
+        public Vector3 GetDrive()
+        {
+            return _shownDrive;
+        }
+
+        /// <summary>自分が踊っている枠なら、動かした分を入れる（同期は間引いて送る）。</summary>
+        public void SetLocalDrive(Vector3 drive)
+        {
+            if (!IsLocalDancer() || drive == _shownDrive) return;
+            _shownDrive = drive;
+            _drive = drive;
+            _driveDirty = true;
+            if (Time.time - _lastDriveSend >= DriveSendInterval) SendDrive();
+        }
+
+        void SendDrive()
+        {
+            if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
+            _driveDirty = false;
+            _lastDriveSend = Time.time;
+            RequestSerialization();
         }
 
         public override void Interact()
@@ -132,6 +176,8 @@ namespace MmdWorld
         {
             if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
             _dancerId = playerId;
+            _drive = Vector3.zero;
+            _shownDrive = Vector3.zero;
             RequestSerialization();
             Refresh();
         }

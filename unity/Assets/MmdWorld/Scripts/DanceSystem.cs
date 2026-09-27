@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using VRCStation = VRC.SDK3.Components.VRCStation;
 using VRCAvatarPedestal = VRC.SDK3.Components.VRCAvatarPedestal;
 using VRC.SDKBase;
+using VRC.Udon.Common;
 
 namespace MmdWorld
 {
@@ -41,6 +42,14 @@ namespace MmdWorld
         public DanceTablet tablet;
         [Tooltip("再生位置・範囲・区切りを示すバー（パネルとタブレット）")]
         public DanceSeekBar[] seekBars;
+
+        [Header("踊りながら動く")]
+        [Tooltip("踊っている間、スティック・WASD で自分の枠（ステーションの親）ごと動けるようにする。向きは頭の向き")]
+        public bool driveWhileDancing = true;
+        [Tooltip("動く速さ（メートル/秒）")]
+        public float driveSpeed = 1.5f;
+        [Tooltip("枠の位置からどこまで離れられるか（メートル）")]
+        public float driveRadius = 4f;
 
         [Header("体の軌跡（ワールドを組み立てるメニューが入れる）")]
         [Tooltip("全曲ぶんをつなげた軌跡。位置は目の高さを 1 とした値、向きは度")]
@@ -110,6 +119,8 @@ namespace MmdWorld
         bool _localPreview;
         float _localPreviewStart;
         float _audioVolume = 1f;
+        float _moveX;
+        float _moveY;
 
         void Start()
         {
@@ -151,7 +162,8 @@ namespace MmdWorld
             var dancer = slots.Length > 0 && slots[0] != null ? slots[0].GetDancer() : null;
             if (Utilities.IsValid(dancer))
                 line += " / 枠1 " + dancer.GetPosition().ToString("F2") + " 骨盤 " + dancer.GetBonePosition(HumanBodyBones.Hips).ToString("F2");
-            if (slots.Length > 0 && slots[0] != null) line += " / 席 " + slots[0].GetStationRoot().position.ToString("F2");
+            if (slots.Length > 0 && slots[0] != null) line += " / 席 " + slots[0].GetStationRoot().position.ToString("F2") + " 動かした分 " + slots[0].GetDrive().ToString("F2");
+            line += " / 入力 " + _moveX.ToString("F1") + "," + _moveY.ToString("F1");
             line += " / 曲 " + (_playing ? CurrentTime().ToString("F1") : "-");
             Debug.Log(line);
             SendCustomEventDelayedSeconds(nameof(_AutoTestLogPosition), 2f);
@@ -466,6 +478,7 @@ namespace MmdWorld
 
             // 踊っている途中で枠から抜けたら（台やタブレットで）、ステーションから降りる
             if (_localStation != null && !IsLocalInAnySlot()) LeaveLocalStation();
+            DriveLocal();
 
             float t = CurrentTime();
             float start = SegmentTime(song, _rangeStart);
@@ -659,14 +672,17 @@ namespace MmdWorld
         /// </summary>
         void MoveStations(int song, float t)
         {
-            if (trajCount == null || song >= trajCount.Length || trajCount[song] < 2) return;
-            float f = Mathf.Clamp(t * trajRate[song], 0f, trajCount[song] - 1.001f);
-            int i = Mathf.FloorToInt(f);
-            float a = f - i;
-            int k = trajStart[song] + i;
-            float x = Mathf.Lerp(trajX[k], trajX[k + 1], a);
-            float z = Mathf.Lerp(trajZ[k], trajZ[k + 1], a);
-            float yaw = Mathf.Lerp(trajYaw[k], trajYaw[k + 1], a);
+            float x = 0f, z = 0f, yaw = 0f;
+            if (trajCount != null && song < trajCount.Length && trajCount[song] >= 2)
+            {
+                float f = Mathf.Clamp(t * trajRate[song], 0f, trajCount[song] - 1.001f);
+                int i = Mathf.FloorToInt(f);
+                float a = f - i;
+                int k = trajStart[song] + i;
+                x = Mathf.Lerp(trajX[k], trajX[k + 1], a);
+                z = Mathf.Lerp(trajZ[k], trajZ[k + 1], a);
+                yaw = Mathf.Lerp(trajYaw[k], trajYaw[k + 1], a);
+            }
             foreach (var slot in slots)
             {
                 if (slot == null) continue;
@@ -675,9 +691,46 @@ namespace MmdWorld
                 if (dancer == null || station == null) continue;
                 // 軌跡は目の高さを 1 とした値なので、踊っている人のアバターの目の高さを掛ける
                 float eye = dancer.GetAvatarEyeHeightAsMeters();
-                station.transform.localPosition = new Vector3(x * eye, 0f, z * eye);
+                // 踊っている人がスティック・WASD で動かした分を足す
+                station.transform.localPosition = new Vector3(x * eye, 0f, z * eye) + slot.GetDrive();
                 station.transform.localRotation = rotateStations ? Quaternion.Euler(0f, yaw, 0f) : Quaternion.identity;
             }
+        }
+
+        /// <summary>
+        /// 自分が踊っている間、スティック・WASD の入力で自分の枠ごと動かす。座ったままなので、VRChat の歩きの代わりにステーションの親を動かす（乗り物と同じ）。
+        /// 向きは頭の左右の向き。動かした分は枠が同期し、ほかの人の手元でも MoveStations が足す。
+        /// </summary>
+        void DriveLocal()
+        {
+            if (!driveWhileDancing || _localStation == null) return;
+            var input = new Vector2(_moveX, _moveY);
+            if (input.sqrMagnitude < 0.01f) return;
+            DanceSlot mine = null;
+            foreach (var slot in slots)
+                if (slot != null && slot.IsLocalDancer()) mine = slot;
+            if (mine == null || mine.GetStationRoot() == null) return;
+            var forward = Networking.LocalPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).rotation * Vector3.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 1e-4f) return;
+            forward.Normalize();
+            var right = new Vector3(forward.z, 0f, -forward.x);
+            var world = (forward * input.y + right * input.x) * driveSpeed * Time.deltaTime;
+            var parent = mine.GetStationRoot().parent;
+            var local = parent != null ? parent.InverseTransformDirection(world) : world;
+            var drive = mine.GetDrive() + local;
+            drive.y = 0f;
+            mine.SetLocalDrive(Vector3.ClampMagnitude(drive, driveRadius));
+        }
+
+        public override void InputMoveHorizontal(float value, UdonInputEventArgs args)
+        {
+            _moveX = value;
+        }
+
+        public override void InputMoveVertical(float value, UdonInputEventArgs args)
+        {
+            _moveY = value;
         }
 
         void ResetStations()
@@ -685,6 +738,7 @@ namespace MmdWorld
             foreach (var slot in slots)
             {
                 if (slot == null) continue;
+                slot.SetLocalDrive(Vector3.zero);
                 var root = slot.GetStationRoot();
                 if (root == null) continue;
                 root.localPosition = Vector3.zero;

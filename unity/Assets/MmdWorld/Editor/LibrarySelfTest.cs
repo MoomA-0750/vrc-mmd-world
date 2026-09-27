@@ -141,7 +141,9 @@ namespace MmdWorld.EditorTools
                     var clip = controller != null ? controller.layers[0].stateMachine.defaultState.motion as AnimationClip : null;
                     var binding = clip != null ? AnimationUtility.GetCurveBindings(clip).FirstOrDefault(b => b.propertyName == "blendShape.あ") : default;
                     var curve = clip != null && binding.propertyName != null ? AnimationUtility.GetEditorCurve(clip, binding) : null;
-                    Check(curve != null && Mathf.Abs(curve.Evaluate(1f) - 0.77f) < 0.01f, "表情の .vmd がステーションのクリップに重なる");
+                    var faceNames = song != null && song.face != null ? string.Join(",", AnimationUtility.GetCurveBindings(song.face).Where(b => b.type == typeof(SkinnedMeshRenderer)).Select(b => b.path + ":" + b.propertyName)) : "（表情なし）";
+                    Check(curve != null && Mathf.Abs(curve.Evaluate(1f) - 0.77f) < 0.01f,
+                          $"表情の .vmd がステーションのクリップに重なる（曲 {index}、クリップ {(clip != null ? clip.name : "なし")}、あ = {(curve != null ? curve.Evaluate(1f).ToString("F2") : "無し")}、表情のカーブ {faceNames}）");
                 }
                 int songCount = MmdWorldLibrary.Songs().Count;
                 Check(slots.All(s => s.stations.Length == 2 && s.stations.All(st => st != null) && s.stationRoot != null), "どの枠にもステーションが2つ（交互に乗り換える用）ある");

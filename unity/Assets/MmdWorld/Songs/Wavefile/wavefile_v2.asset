@@ -17,3 +17,5 @@ MonoBehaviour:
   audio: {fileID: 8300000, guid: c5fe0fc8a453418419c56562709d0b78, type: 3}
   audioOffset: 0
   order: 0
+  seekStep: 10
+  seekPoints: []

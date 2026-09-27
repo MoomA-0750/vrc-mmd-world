@@ -27,6 +27,9 @@ namespace MmdWorld.Vmd
         public List<string> IgnoredBones = new List<string>();
         public List<string> Morphs = new List<string>();
         public bool OldStyleThumbs;
+        /// <summary>焼いたリグの humanScale と、目の高さ（メートル）。その場で踊るクリップと軌跡を作るのに使う。</summary>
+        public float HumanScale;
+        public float EyeHeight;
 
         public override string ToString() =>
             $"{Frames} フレーム。使ったボーン {MatchedBones.Count}（{string.Join(", ", MatchedBones)}）。" +
@@ -67,6 +70,9 @@ namespace MmdWorld.Vmd
                 var goalKeys = new Keyframe[14][];
                 for (int c = 0; c < 14; c++) goalKeys[c] = new Keyframe[lastFrame + 1];
                 float humanScale = rig.HumanScale;
+                report.HumanScale = humanScale;
+                // 目は頭のボーンの少し上（MMD の標準的なモデルで 7〜8cm）
+                report.EyeHeight = rig["Head"].position.y + 0.08f;
                 var feet = new[] { rig["LeftFoot"], rig["RightFoot"] };
 
                 for (int f = 0; f <= lastFrame; f++)

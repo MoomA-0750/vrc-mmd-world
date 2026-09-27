@@ -25,6 +25,7 @@ namespace MmdWorld.EditorTools
         const string RootDir = "Assets/MmdWorld";
         const string GeneratedDir = RootDir + "/Generated";
         const string ScriptsDir = RootDir + "/Scripts";
+        const string StationDir = GeneratedDir + "/Station";
         public const string ScenePath = RootDir + "/Scenes/MmdWorld.unity";
         const float SlotSpacing = 1.6f;
         static int _slotCount;
@@ -69,10 +70,17 @@ namespace MmdWorld.EditorTools
             var songs = MmdWorldLibrary.Songs();
             Debug.Log($"[MmdWorld] 曲 {songs.Count} 件: {string.Join(", ", songs.Select(s => s.DisplayTitle))}");
 
-            var stationControllers = songs.Select((s, i) => BuildStationController(s, i)).ToList();
-            // 曲が減ったときに、使われなくなった曲の Animator を残さない
-            for (int i = songs.Count; AssetDatabase.LoadAssetAtPath<Object>($"{GeneratedDir}/Station_Song{i}.controller") != null; i++)
+            // ステーション用の Controller は、曲 × 区切りの数だけ作り直す（前の分は丸ごと消す）
+            AssetDatabase.DeleteAsset(StationDir);
+            for (int i = 0; AssetDatabase.LoadAssetAtPath<Object>($"{GeneratedDir}/Station_Song{i}.controller") != null; i++)
                 AssetDatabase.DeleteAsset($"{GeneratedDir}/Station_Song{i}.controller");
+            EnsureFolder(StationDir);
+            var segments = songs.Select(MmdWorldLibrary.Segments).ToList();
+            var segmentControllers = new List<RuntimeAnimatorController>();
+            for (int i = 0; i < songs.Count; i++)
+                for (int k = 0; k < segments[i].Count; k++)
+                    segmentControllers.Add(BuildStationController(songs[i], i, k, segments[i][k]));
+            Debug.Log($"[MmdWorld] ステーション用の Controller {segmentControllers.Count} 個（区切り: {string.Join(" / ", segments.Select(g => g.Count + " 個"))}）");
             var previewController = BuildPreviewController(songs);
             var mannequinMaterial = LoadOrCreateMaterial(GeneratedDir + "/Mannequin.mat", new Color(0.85f, 0.85f, 0.9f));
             var mannequin = MannequinBuilder.BuildPrefab(GeneratedDir + "/Mannequin.prefab", GeneratedDir + "/MannequinAvatar.asset", mannequinMaterial);
@@ -90,9 +98,10 @@ namespace MmdWorld.EditorTools
 
             var slots = new List<DanceSlot>();
             for (int i = 0; i < _slotCount; i++)
-                slots.Add(BuildSlot(i, system, stationControllers));
+                slots.Add(BuildSlot(i, system, segmentControllers.Count > 0 ? segmentControllers[0] : null));
 
             var previewAnimators = BuildPreviewDancers(settings.previewDancers, mannequin, previewController, stageWidth);
+            var slotAvatars = BuildSlotAvatars(settings.slotAvatars, previewController);
 
             var (title, status) = BuildPanel(system);
 
@@ -100,10 +109,18 @@ namespace MmdWorld.EditorTools
             system.songAudio = songs.Select(s => s.audio).ToArray();
             system.songLengths = songs.Select(s => s.motion.length).ToArray();
             system.audioOffsets = songs.Select(s => s.audioOffset).ToArray();
+            FillTrajectories(system, songs);
+            system.segmentTimes = segments.SelectMany(g => g).ToArray();
+            system.segmentControllers = segmentControllers.ToArray();
+            system.segmentStart = segments.Select((g, i) => segments.Take(i).Sum(x => x.Count)).ToArray();
+            system.segmentCount = segments.Select(g => g.Count).ToArray();
             system.slots = slots.ToArray();
             system.audioSource = audio;
             system.previewDancers = previewAnimators.ToArray();
+            system.slotAvatars = slotAvatars.ToArray();
+            system.slotAvatarNames = slotAvatars.Select(a => a.name).ToArray();
             system.countdownSeconds = settings.countdownSeconds;
+            system.rotateStations = settings.rotateDancers;
             system.titleText = title;
             system.statusText = status;
             UdonSharpEditorUtility.CopyProxyToUdon(system);
@@ -151,14 +168,18 @@ namespace MmdWorld.EditorTools
 
         // ---- 曲ごとのアニメーター ----
 
-        static AnimatorController BuildStationController(DanceSong song, int index)
+        /// <summary>曲 index の、時刻 startTime から踊り始めるステーション用の Controller。</summary>
+        static AnimatorController BuildStationController(DanceSong song, int index, int segment, float startTime)
         {
-            string path = $"{GeneratedDir}/Station_Song{index}.controller";
-            AssetDatabase.DeleteAsset(path);
+            string path = $"{StationDir}/Song{index}_Seg{segment}.controller";
             var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
             var sm = controller.layers[0].stateMachine;
             var dance = sm.AddState("Dance");
-            dance.motion = song.motion;
+            // 体の移動と向きは、DanceSystem がステーションごと動かして出すので、その場で踊るクリップを使う
+            var clip = MmdWorldLibrary.InPlaceClip(song);
+            dance.motion = clip;
+            // 区切りの時刻から始める（座った瞬間にこのステートが始まる）
+            dance.cycleOffset = clip.length > 0f ? startTime / clip.length : 0f;
             dance.writeDefaultValues = false;
             // クリップには足の IK の目標（LeftFootT など）を焼いてあるので、体格の違うアバターでも足が MMD の位置に着く
             dance.iKOnFeet = true;
@@ -189,6 +210,38 @@ namespace MmdWorld.EditorTools
             return controller;
         }
 
+        /// <summary>曲ごとの軌跡を1本の配列につなげて DanceSystem に入れる（Udon は配列の配列を持てないので）。</summary>
+        static void FillTrajectories(DanceSystem system, List<DanceSong> songs)
+        {
+            var xs = new List<float>();
+            var zs = new List<float>();
+            var yaws = new List<float>();
+            var starts = new List<int>();
+            var counts = new List<int>();
+            var rates = new List<float>();
+            foreach (var song in songs)
+            {
+                var tr = MmdWorldLibrary.Trajectory(song);
+                starts.Add(xs.Count);
+                counts.Add(tr != null ? tr.Count : 0);
+                rates.Add(tr != null ? tr.sampleRate : 1f);
+                if (tr == null)
+                {
+                    Debug.LogWarning($"[MmdWorld] {song.DisplayTitle} に軌跡が無い（取り込み直すと作られる）。この曲ではステーションを動かさない");
+                    continue;
+                }
+                xs.AddRange(tr.x);
+                zs.AddRange(tr.z);
+                yaws.AddRange(tr.yaw);
+            }
+            system.trajX = xs.ToArray();
+            system.trajZ = zs.ToArray();
+            system.trajYaw = yaws.ToArray();
+            system.trajStart = starts.ToArray();
+            system.trajCount = counts.ToArray();
+            system.trajRate = rates.ToArray();
+        }
+
         // ---- お手本・着替えの台 ----
 
         /// <summary>
@@ -217,6 +270,62 @@ namespace MmdWorld.EditorTools
                 animators.Add(animator);
             }
             return animators;
+        }
+
+        /// <summary>
+        /// 枠で踊らせるアバターを1体ずつ置く（最初は隠しておき、枠に割り当てられたら DanceSystem が枠の位置に出す）。
+        /// VRChat のアバターの prefab をそのまま使えるよう、ワールドでは使えない部品（Avatar Descriptor など）を外す。揺れもの（PhysBone）は残す。
+        /// </summary>
+        static List<Animator> BuildSlotAvatars(List<GameObject> models, RuntimeAnimatorController controller)
+        {
+            var result = new List<Animator>();
+            var usable = models.Where(m => m != null && IsHumanoid(m)).Distinct().ToList();
+            foreach (var m in models.Where(m => m != null && !IsHumanoid(m)))
+                Debug.LogWarning($"[MmdWorld] 枠で踊らせるアバターの {m.name} は Humanoid ではないので置かない");
+            if (usable.Count == 0) return result;
+
+            var root = new GameObject("SlotAvatars");
+            foreach (var model in usable)
+            {
+                var go = (GameObject)PrefabUtility.InstantiatePrefab(model, root.transform);
+                go.name = model.name;
+                // prefab のインスタンスのままだと部品を外せないことがあるので、結び付きを解く（シーンは毎回作り直すので困らない）
+                PrefabUtility.UnpackPrefabInstance(go, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                int removed = StripAvatarOnlyComponents(go);
+                if (removed > 0) Debug.Log($"[MmdWorld] {model.name} からワールドで使えない部品を {removed} 個外した");
+                var animator = go.GetComponent<Animator>();
+                animator.runtimeAnimatorController = controller;
+                animator.applyRootMotion = false;
+                animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+                go.SetActive(false);
+                result.Add(animator);
+            }
+            return result;
+        }
+
+        /// <summary>アバター専用の部品（型の名前空間で見分ける）と、中身の無いスクリプトを外す。外した数を返す。</summary>
+        public static int StripAvatarOnlyComponents(GameObject root)
+        {
+            string[] avatarOnly = { "VRC.SDK3.Avatars", "VRC.SDKBase.VRC_AvatarDescriptor", "VRC.Core.PipelineManager", "nadena.dev", "Anatawa12", "VRC.SDK3.Dynamics.Contact" };
+            int removed = 0;
+            // 依存関係のある部品は外す順番で失敗することがあるので、外せなくなるまで繰り返す
+            for (int pass = 0; pass < 4; pass++)
+            {
+                bool any = false;
+                foreach (var c in root.GetComponentsInChildren<Component>(true))
+                {
+                    if (c == null || c is Transform) continue;
+                    string name = c.GetType().FullName ?? "";
+                    if (!avatarOnly.Any(name.StartsWith)) continue;
+                    Object.DestroyImmediate(c);
+                    removed++;
+                    any = true;
+                }
+                if (!any) break;
+            }
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                removed += GameObjectUtility.RemoveMonoBehavioursWithMissingScript(t.gameObject);
+            return removed;
         }
 
         static bool IsHumanoid(GameObject model)
@@ -282,7 +391,7 @@ namespace MmdWorld.EditorTools
             mirror.transform.localScale = new Vector3(8f, 3.4f, 1f);
         }
 
-        static DanceSlot BuildSlot(int index, DanceSystem system, List<AnimatorController> controllers)
+        static DanceSlot BuildSlot(int index, DanceSystem system, RuntimeAnimatorController firstController)
         {
             var root = new GameObject("Slot" + (index + 1));
             float x = (index - (_slotCount - 1) * 0.5f) * SlotSpacing;
@@ -304,28 +413,46 @@ namespace MmdWorld.EditorTools
             var slot = UdonSharpUndo.AddComponent<DanceSlot>(pad);
             UdonSharpEditorUtility.GetBackingUdonBehaviour(slot).interactText = "ここで踊る / やめる";
 
-            var stations = new List<VRCStation>();
-            for (int s = 0; s < controllers.Count; s++)
+            // ステーションは枠に2つ（A と B）。Controller は曲と区切りに合わせて DanceSystem が差し替え、シークでは交互に乗り換える。
+            // 2つとも同じ親の下に置き、踊りの軌跡どおりに親を動かす
+            var stationRoot = new GameObject("Stations");
+            stationRoot.transform.SetParent(root.transform, false);
+            var stationList = new List<VRCStation>();
+            foreach (string stationName in new[] { "StationA", "StationB" })
             {
-                var go = new GameObject("Station_Song" + s);
-                go.transform.SetParent(root.transform, false);
-                var station = go.AddComponent<VRCStation>();
+                var stationGo = new GameObject(stationName);
+                stationGo.transform.SetParent(stationRoot.transform, false);
+                var station = stationGo.AddComponent<VRCStation>();
                 station.PlayerMobility = VRC.SDKBase.VRCStation.Mobility.Immobilize;
                 station.seated = false;
                 station.canUseStationFromStation = true;
                 station.disableStationExit = false;
-                station.animatorController = controllers[s];
-                station.stationEnterPlayerLocation = go.transform;
+                station.animatorController = firstController;
+                station.stationEnterPlayerLocation = stationGo.transform;
                 station.stationExitPlayerLocation = root.transform;
-                stations.Add(station);
+                stationList.Add(station);
             }
+
+            // ワールドのアバターを選ぶボタン（アバターが1体もいないワールドでは押しても何も起きない）
+            var avatarButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            avatarButton.name = "AvatarButton";
+            avatarButton.transform.SetParent(root.transform, false);
+            avatarButton.transform.localPosition = new Vector3(0.6f, 0.15f, 0.5f);
+            avatarButton.transform.localScale = new Vector3(0.18f, 0.3f, 0.18f);
+            avatarButton.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/AvatarButton.mat", new Color(0.6f, 0.3f, 0.8f));
+            var ab = UdonSharpUndo.AddComponent<DanceButton>(avatarButton);
+            ab.target = slot;
+            ab.eventName = nameof(DanceSlot.NextAvatar);
+            UdonSharpEditorUtility.GetBackingUdonBehaviour(ab).interactText = "この枠で踊るアバターを選ぶ";
+            UdonSharpEditorUtility.CopyProxyToUdon(ab);
 
             var label = CreateText(root.transform, "Label", "空き", 60, new Vector2(500, 200));
             label.transform.position = root.transform.position + new Vector3(0f, 2.2f, 0f);
             label.transform.rotation = Quaternion.identity;
 
             slot.system = system;
-            slot.stations = stations.ToArray();
+            slot.stations = stationList.ToArray();
+            slot.stationRoot = stationRoot.transform;
             slot.label = label;
             slot.pad = pad.GetComponent<Renderer>();
             UdonSharpEditorUtility.CopyProxyToUdon(slot);
@@ -341,23 +468,31 @@ namespace MmdWorld.EditorTools
             board.name = "Board";
             Object.DestroyImmediate(board.GetComponent<Collider>());
             board.transform.SetParent(panel.transform, false);
-            board.transform.localPosition = new Vector3(0f, 1.35f, 0.03f);
-            board.transform.localScale = new Vector3(1.8f, 0.7f, 0.02f);
+            board.transform.localPosition = new Vector3(0f, 1.2f, 0.03f);
+            board.transform.localScale = new Vector3(1.9f, 1.35f, 0.02f);
             board.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Board.mat", new Color(0.08f, 0.08f, 0.1f));
 
             var title = CreateText(panel.transform, "Title", "曲", 60, new Vector2(850, 120));
-            title.transform.localPosition = new Vector3(0f, 1.5f, 0f);
-            var status = CreateText(panel.transform, "Status", "停止中", 50, new Vector2(850, 100));
-            status.transform.localPosition = new Vector3(0f, 1.25f, 0f);
+            title.transform.localPosition = new Vector3(0f, 1.74f, 0f);
+            var status = CreateText(panel.transform, "Status", "停止中", 44, new Vector2(880, 140));
+            status.transform.localPosition = new Vector3(0f, 1.5f, 0f);
 
-            var buttons = new[] { ("◀ 前", "PrevSong"), ("▶ 再生", "Play"), ("■ 停止", "Stop"), ("次 ▶", "NextSong") };
+            // 3 段: 曲と再生 / シーク・プレビュー・ループ / 範囲
+            var buttons = new[]
+            {
+                ("◀ 曲", "PrevSong"), ("▶ 再生", "Play"), ("■ 停止", "Stop"), ("曲 ▶", "NextSong"),
+                ("≪ 区切り", "SeekBack"), ("区切り ≫", "SeekForward"), ("プレビュー", "TogglePreview"), ("ループ", "ToggleLoop"),
+                ("開始 ◀", "RangeStartBack"), ("開始 ▶", "RangeStartForward"), ("終了 ◀", "RangeEndBack"), ("終了 ▶", "RangeEndForward"),
+            };
             for (int i = 0; i < buttons.Length; i++)
             {
                 var (text, evt) = buttons[i];
+                float bx = -0.66f + (i % 4) * 0.44f;
+                float by = 1.24f - (i / 4) * 0.24f;
                 var button = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 button.name = "Button_" + evt;
                 button.transform.SetParent(panel.transform, false);
-                button.transform.localPosition = new Vector3(-0.66f + i * 0.44f, 0.85f, 0f);
+                button.transform.localPosition = new Vector3(bx, by, 0f);
                 button.transform.localScale = new Vector3(0.38f, 0.18f, 0.06f);
                 button.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Button.mat", new Color(0.25f, 0.45f, 0.8f));
                 var db = UdonSharpUndo.AddComponent<DanceButton>(button);
@@ -366,8 +501,8 @@ namespace MmdWorld.EditorTools
                 UdonSharpEditorUtility.GetBackingUdonBehaviour(db).interactText = text;
                 UdonSharpEditorUtility.CopyProxyToUdon(db);
 
-                var label = CreateText(panel.transform, "Label_" + evt, text, 40, new Vector2(200, 80));
-                label.transform.localPosition = new Vector3(-0.66f + i * 0.44f, 0.85f, -0.04f);
+                var label = CreateText(panel.transform, "Label_" + evt, text, 36, new Vector2(200, 80));
+                label.transform.localPosition = new Vector3(bx, by, -0.04f);
             }
             return (title, status);
         }

@@ -48,6 +48,7 @@ namespace MmdWorld.EditorTools
 
             var settings = MmdWorldSettings.LoadOrCreate();
             var saved = (settings.slotCount, settings.countdownSeconds, new List<GameObject>(settings.previewDancers), new List<string>(settings.pedestalAvatarIds));
+            var savedSlotAvatars = new List<GameObject>(settings.slotAvatars);
             int before = MmdWorldLibrary.Songs().Count;
             // 並べ替えで変わる既存の曲の順番も、終わったら戻す
             var orders = MmdWorldLibrary.Songs().ToDictionary(s => AssetDatabase.GetAssetPath(s), s => s.order);
@@ -81,17 +82,33 @@ namespace MmdWorld.EditorTools
                 settings.pedestalAvatarIds = new List<string> { TestAvatarId, "not-an-id" };
                 var local = FindLocalAvatar();
                 settings.previewDancers = local != null ? new List<GameObject> { local, null } : new List<GameObject>();
+                // 枠で踊らせるアバター: 人形の prefab（と、あれば手元のアバター）。同じものを2回入れても1体だけ置く
+                var mannequinPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MmdWorld/Generated/Mannequin.prefab");
+                settings.slotAvatars = local != null ? new List<GameObject> { mannequinPrefab, local, mannequinPrefab } : new List<GameObject> { mannequinPrefab, mannequinPrefab };
                 EditorUtility.SetDirty(settings);
                 WorldBuilder.Build();
                 var slots = UnityEngine.Object.FindObjectsOfType<DanceSlot>(true);
                 Check(slots.Length == 6, "枠が6つになる: " + slots.Length);
                 int songCount = MmdWorldLibrary.Songs().Count;
-                Check(slots.All(s => s.stations.Length == songCount), "どの枠にも曲の数だけステーションがある");
+                Check(slots.All(s => s.stations.Length == 2 && s.stations.All(st => st != null) && s.stationRoot != null), "どの枠にもステーションが2つ（交互に乗り換える用）ある");
                 var pedestals = UnityEngine.Object.FindObjectsOfType<VRCAvatarPedestal>(true);
                 Check(pedestals.Length == 1 && pedestals[0].blueprintId == TestAvatarId, "形の正しい ID の台だけが1つ置かれる");
                 var system = UnityEngine.Object.FindObjectsOfType<DanceSystem>(true).First();
+                int segTotal = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
+                Check(system.segmentControllers.Length == segTotal && system.segmentControllers.All(c => c != null), $"区切りの数だけ Controller がある: {system.segmentControllers.Length}");
+                Check(system.segmentCount.Length == songCount && system.segmentTimes.Length == segTotal && system.segmentTimes[system.segmentStart.Last()] == 0f, "区切りの表が曲ごとに 0 秒から並ぶ");
                 Check(Mathf.Approximately(system.countdownSeconds, 5f), "カウントダウンの秒数が入る");
                 Check(system.songTitles.Contains("自己テスト/曲:1"), "足した曲がパネルの曲に入る");
+                int expectedSlotAvatars = local != null ? 2 : 1;
+                Check(system.slotAvatars.Length == expectedSlotAvatars && system.slotAvatarNames.Length == expectedSlotAvatars, "枠で踊らせるアバターが置かれる（重複は1体）: " + system.slotAvatars.Length);
+                Check(system.slotAvatars.All(a => a != null && !a.gameObject.activeSelf && a.runtimeAnimatorController != null), "枠のアバターは最初は隠れていて、踊りの Animator が付いている");
+                Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSlot.NextAvatar)) == 6, "枠ごとにアバターを選ぶボタンがある");
+                if (local != null)
+                {
+                    var placed = system.slotAvatars.First(a => a.name == local.name).gameObject;
+                    int avatarParts = placed.GetComponentsInChildren<Component>(true).Count(c => c != null && (c.GetType().FullName ?? "").StartsWith("VRC.SDK3.Avatars"));
+                    Check(avatarParts == 0, "手元のアバターからアバター専用の部品が外れている");
+                }
                 if (local != null)
                     Check(system.previewDancers.Length == 1 && system.previewDancers[0].name.Contains(local.name), "お手本に手元のアバターが入る（空の欄は飛ばす）");
                 else
@@ -113,6 +130,7 @@ namespace MmdWorld.EditorTools
                 // シーンを作り直すと設定のアセットも外されて参照が切れるので、読み直してから戻す
                 settings = MmdWorldSettings.LoadOrCreate();
                 (settings.slotCount, settings.countdownSeconds, settings.previewDancers, settings.pedestalAvatarIds) = saved;
+                settings.slotAvatars = savedSlotAvatars;
                 foreach (var pair in orders)
                 {
                     var s = AssetDatabase.LoadAssetAtPath<DanceSong>(pair.Key);

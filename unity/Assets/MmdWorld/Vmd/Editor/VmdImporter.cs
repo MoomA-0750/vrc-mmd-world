@@ -10,8 +10,8 @@ namespace MmdWorld.Vmd
     [ScriptedImporter(Version, "vmd")]
     public sealed class VmdImporter : ScriptedImporter
     {
-        /// <summary>2: 足の IK の目標を焼く・親指０ の無い形に合わせる</summary>
-        public const int Version = 2;
+        /// <summary>2: 足の IK の目標を焼く・親指０ の無い形に合わせる　3: その場で踊るクリップと軌跡を足す　4: その場で踊るクリップをループにする（cycleOffset を効かせる）</summary>
+        public const int Version = 4;
 
         [Tooltip("モーションを作ったモデルの腕が、初期姿勢で水平から何度下がっているか")]
         public float armAngle = 35f;
@@ -34,6 +34,13 @@ namespace MmdWorld.Vmd
             clip.name = System.IO.Path.GetFileNameWithoutExtension(ctx.assetPath);
             ctx.AddObjectToAsset("clip", clip);
             ctx.SetMainObject(clip);
+            // ステーション用: 体の床の上の移動と左右の向きを抜いたクリップと、その軌跡（ステーションを動かすのに使う）
+            var (inPlace, trajectory) = VmdInPlace.Split(clip, report.HumanScale, report.EyeHeight);
+            inPlace.name = clip.name + "（その場）";
+            trajectory.name = clip.name + " の軌跡";
+            ctx.AddObjectToAsset("inplace", inPlace);
+            ctx.AddObjectToAsset("trajectory", trajectory);
+
             // 何が使われ、何が捨てられたかをサブアセットとして残す（Project で .vmd を開くと見える）
             var reportAsset = new TextAsset(report.ToString()) { name = clip.name + " の取り込み結果" };
             ctx.AddObjectToAsset("report", reportAsset);

@@ -94,6 +94,33 @@ namespace MmdWorld.EditorTools
             AssetDatabase.SaveAssets();
         }
 
+        /// <summary>ステーション用の、その場で踊るクリップ（.vmd の取り込みで作られる）。無ければ元のクリップ。</summary>
+        public static AnimationClip InPlaceClip(DanceSong song)
+        {
+            string path = AssetDatabase.GetAssetPath(song.motion);
+            var inPlace = AssetDatabase.LoadAllAssetsAtPath(path).OfType<AnimationClip>().FirstOrDefault(c => c != song.motion && c.name.EndsWith("（その場）"));
+            return inPlace != null ? inPlace : song.motion;
+        }
+
+        /// <summary>体の軌跡（.vmd の取り込みで作られる）。無ければ null。</summary>
+        public static MmdWorld.Vmd.VmdTrajectory Trajectory(DanceSong song) =>
+            AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(song.motion)).OfType<MmdWorld.Vmd.VmdTrajectory>().FirstOrDefault();
+
+        /// <summary>曲の区切りの時刻（秒、0 から昇順）。seekPoints があればそれ、無ければ seekStep ごと。曲の長さより前のものだけ。</summary>
+        public static List<float> Segments(DanceSong song)
+        {
+            float length = song.motion != null ? song.motion.length : 0f;
+            var points = new List<float> { 0f };
+            if (song.seekPoints != null && song.seekPoints.Count > 0)
+                points.AddRange(song.seekPoints);
+            else
+            {
+                float step = Mathf.Max(2f, song.seekStep);
+                for (float t = step; t < length - 1f; t += step) points.Add(t);
+            }
+            return points.Where(t => t >= 0f && t < length - 0.5f).Distinct().OrderBy(t => t).ToList();
+        }
+
         /// <summary>モーションと音声の長さ（秒）。音声が無ければ音声は 0。</summary>
         public static (float motion, float audio) Lengths(DanceSong song) =>
             (song.motion != null ? song.motion.length : 0f, song.audio != null ? song.audio.length : 0f);

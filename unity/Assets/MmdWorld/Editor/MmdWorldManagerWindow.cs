@@ -31,6 +31,8 @@ namespace MmdWorld.EditorTools
             EditorGUILayout.Space(12);
             DrawDancers(settings, songs);
             EditorGUILayout.Space(12);
+            DrawSlotAvatars(settings, songs);
+            EditorGUILayout.Space(12);
             DrawPedestals(settings);
             EditorGUILayout.Space(12);
             DrawWorld(settings);
@@ -71,15 +73,18 @@ namespace MmdWorld.EditorTools
                     var motion = (AnimationClip)EditorGUILayout.ObjectField("モーション", song.motion, typeof(AnimationClip), false);
                     var audio = (AudioClip)EditorGUILayout.ObjectField("音声", song.audio, typeof(AudioClip), false);
                     float offset = EditorGUILayout.FloatField(new GUIContent("音のずれ（秒）", "音をモーションより何秒遅らせるか。音が早いときは +"), song.audioOffset);
+                    float step = EditorGUILayout.FloatField(new GUIContent("区切りの間隔（秒）", "シーク・範囲再生・途中からの参加の区切り。細かいほどステーション用の Controller が増える。区切りの時刻を直接並べたいときは曲のアセットの seekPoints に入れる"), song.seekStep);
                     if (EditorGUI.EndChangeCheck())
                     {
                         Undo.RecordObject(song, "曲の設定");
                         song.motion = motion;
                         song.audio = audio;
                         song.audioOffset = offset;
+                        song.seekStep = Mathf.Max(2f, step);
                         EditorUtility.SetDirty(song);
                     }
 
+                    EditorGUILayout.LabelField($"区切り {MmdWorldLibrary.Segments(song).Count} 個" + (song.seekPoints != null && song.seekPoints.Count > 0 ? "（時刻を直接指定）" : ""), EditorStyles.miniLabel);
                     var (m, a) = MmdWorldLibrary.Lengths(song);
                     string lengths = $"長さ: モーション {Format(m)}" + (song.audio != null ? $" / 音声 {Format(a)}" : " / 音声なし");
                     if (song.audio != null && Mathf.Abs(m - a - song.audioOffset) > 2f)
@@ -160,6 +165,29 @@ namespace MmdWorld.EditorTools
             if (GUILayout.Button("＋ お手本を足す")) { Undo.RecordObject(settings, "お手本"); settings.previewDancers.Add(null); Save(settings); }
         }
 
+        // ---- 枠で踊らせるアバター ----
+
+        void DrawSlotAvatars(MmdWorldSettings settings, List<DanceSong> songs)
+        {
+            EditorGUILayout.LabelField("枠で踊らせるアバター（ワールドに入れる）", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("ワールドに入れておき、人と同じ枠で踊らせるアバター。枠の横の紫のボタンで、その枠で踊るアバターを選びます（人が入っている枠には出ません）。\n" +
+                "VRChat のアバターの prefab もそのまま使えます（Avatar Descriptor などワールドで使えない部品は組み立てのときに外し、揺れものは残します）。シェーダーが lilToon ならワールドのプロジェクトにも lilToon を入れてください。\n" +
+                "ワールドを公開すると、入れたアバターのデータも来た人に配られます。購入したアバターの多くは規約でこれを禁じているので、公開するワールドでは規約で許されたものだけを使ってください。", MessageType.None);
+
+            for (int i = 0; i < settings.slotAvatars.Count; i++)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUI.BeginChangeCheck();
+                    var model = (GameObject)EditorGUILayout.ObjectField(settings.slotAvatars[i], typeof(GameObject), false);
+                    if (EditorGUI.EndChangeCheck()) { Undo.RecordObject(settings, "枠のアバター"); settings.slotAvatars[i] = model; Save(settings); }
+                    if (GUILayout.Button("外す", GUILayout.Width(44))) { Undo.RecordObject(settings, "枠のアバター"); settings.slotAvatars.RemoveAt(i); Save(settings); GUIUtility.ExitGUI(); }
+                }
+                if (settings.slotAvatars[i] != null) DrawAvatarCheck(MmdWorldLibrary.CheckAvatar(settings.slotAvatars[i], songs));
+            }
+            if (GUILayout.Button("＋ 枠で踊らせるアバターを足す")) { Undo.RecordObject(settings, "枠のアバター"); settings.slotAvatars.Add(null); Save(settings); }
+        }
+
         static void DrawAvatarCheck(MmdWorldLibrary.AvatarCheck check)
         {
             if (!check.IsHumanoid)
@@ -203,15 +231,17 @@ namespace MmdWorld.EditorTools
             EditorGUI.BeginChangeCheck();
             int slots = EditorGUILayout.IntSlider("踊る人の枠", settings.slotCount, 1, 16);
             float countdown = EditorGUILayout.Slider("カウントダウン（秒）", settings.countdownSeconds, 0f, 10f);
+            bool rotate = EditorGUILayout.Toggle(new GUIContent("回る振りを出す", "ステーションごと回して、回る振りを出す。踊る人の視点も回るので、VR で酔いやすい人はオフに（ほかの人から見ても回らなくなる）"), settings.rotateDancers);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(settings, "ワールドの設定");
                 settings.slotCount = slots;
                 settings.countdownSeconds = countdown;
+                settings.rotateDancers = rotate;
                 Save(settings);
             }
-            int stations = slots * MmdWorldLibrary.Songs().Count;
-            EditorGUILayout.LabelField($"ステーションの数: 枠 {slots} × 曲 {MmdWorldLibrary.Songs().Count} = {stations}", EditorStyles.miniLabel);
+            int controllers = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
+            EditorGUILayout.LabelField($"ステーション {slots} 個（枠ごとに1つ）、ステーション用の Controller {controllers} 個（曲 × 区切り）", EditorStyles.miniLabel);
 
             EditorGUILayout.Space(6);
             if (GUILayout.Button("ワールドを組み立て直す", GUILayout.Height(32)))

@@ -17,7 +17,10 @@ namespace MmdWorld.EditorTools
     ///   PlayCheckPreview  Play モードでお手本だけ再生する確認
     ///   PlayCheckDance    Play モードで枠に入って再生する確認
     ///   BuildAndTest      VRChat SDK の Build &amp; Test（VR ではなくデスクトップで1つ起動する）
-    ///   BuildAndTestAuto  同上。クライアントを2つ起動し、先に入った方が12秒後に枠1に入って再生する（そのビルドだけ）。後の方は客席から見る
+    ///   BuildAndTestAuto [着替えるID] [戻すID] [features]
+    ///                     features を付けると、再生とシークの代わりに、プレビュー・範囲再生・ループ・途中からの参加を試す
+    ///                     同上。クライアントを2つ起動し、先に入った方が12秒後に枠1に入って再生する（そのビルドだけ）。後の方は枠1の正面から見る。
+    ///                     ID を渡すと、踊る前にそのアバターに着替え、終わったら戻す ID のアバターに着替え直す（自分がアップロードしたか公開のアバターだけ）
     ///   OpenManager       マネージャーのウィンドウを開く
     ///   Refresh           AssetDatabase.Refresh
     /// </summary>
@@ -35,10 +38,14 @@ namespace MmdWorld.EditorTools
         static void Poll()
         {
             if (EditorApplication.timeSinceStartup < _nextPoll) return;
+            // コンパイル中や取り込み中に拾うと、U# が「コンパイル中なのでビルドしない」と中止するなど途中で失敗するので、落ち着くまで待つ
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating) return;
             _nextPoll = EditorApplication.timeSinceStartup + 1.0;
             if (!File.Exists(CommandFile)) return;
 
-            string command = File.ReadAllText(CommandFile).Trim();
+            // 「処理名 引数1 引数2 …」の形。引数は空白で区切る
+            string[] words = File.ReadAllText(CommandFile).Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            string command = words.Length > 0 ? words[0] : "";
             File.Delete(CommandFile);
             Debug.Log("[MmdWorld.Command] " + command);
             try
@@ -58,7 +65,9 @@ namespace MmdWorld.EditorTools
                         BuildAndTest(false);
                         break;
                     case "BuildAndTestAuto":
-                        BuildAndTest(true);
+                        // BuildAndTestAuto [着替えるアバターID] [戻すアバターID]
+                        BuildAndTest(true, words.Length > 1 ? words[1] : "", words.Length > 2 ? words[2] : "",
+                            words.Length > 3 && words[3] == "features" ? 1 : 0);
                         break;
                     case "OpenManager":
                         MmdWorldManagerWindow.Open();
@@ -80,7 +89,9 @@ namespace MmdWorld.EditorTools
         [MenuItem("MMD World/VRChat で試す（Build & Test）")]
         public static void BuildAndTestMenu() => BuildAndTest(false);
 
-        public static async void BuildAndTest(bool autoTest)
+        public static void BuildAndTest(bool autoTest) => BuildAndTest(autoTest, "", "", 0);
+
+        public static async void BuildAndTest(bool autoTest, string avatarId, string restoreAvatarId, int scenario)
         {
             if (EditorApplication.isPlaying)
             {
@@ -101,14 +112,45 @@ namespace MmdWorld.EditorTools
             }
             // テストのビルドにだけ、入って数秒後に自分で枠1に入って再生する設定を入れる。終わったら戻して保存する
             var system = UnityEngine.Object.FindObjectsOfType<DanceSystem>(true).FirstOrDefault();
+            // 着替えの台と見る位置も、このビルドの間だけ置く
+            GameObject pedestalGo = null, restoreGo = null, viewPoint = null;
             if (system != null && autoTest)
             {
                 system.autoTestDelay = 12f;
+                system.autoTestScenario = scenario;
+                viewPoint = new GameObject("AutoTestViewPoint");
+                var slot1 = system.slots.Length > 0 ? system.slots[0].transform.parent : null;
+                if (slot1 != null)
+                    viewPoint.transform.SetPositionAndRotation(slot1.position + slot1.forward * 1.5f, Quaternion.LookRotation(-slot1.forward));
+                system.autoTestViewPoint = viewPoint.transform;
+                if (MmdWorldLibrary.IsValidAvatarId(avatarId))
+                {
+                    pedestalGo = HiddenPedestal("AutoTestPedestal", avatarId, -20f);
+                    system.autoTestPedestal = pedestalGo.GetComponentInChildren<VRC.SDK3.Components.VRCAvatarPedestal>();
+                    if (MmdWorldLibrary.IsValidAvatarId(restoreAvatarId))
+                    {
+                        restoreGo = HiddenPedestal("AutoTestRestorePedestal", restoreAvatarId, -25f);
+                        system.autoTestRestorePedestal = restoreGo.GetComponentInChildren<VRC.SDK3.Components.VRCAvatarPedestal>();
+                    }
+                }
                 UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(system);
             }
             try
             {
-                await builder.BuildAndTest();
+                // 開いたばかりの SDK のパネルは準備に数秒かかり、その間は「パネルを開いて」で断られるので、待って呼び直す
+                for (int attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        await builder.BuildAndTest();
+                        break;
+                    }
+                    catch (Exception e) when (attempt < 15 && e.Message.Contains("Open the SDK panel"))
+                    {
+                        await System.Threading.Tasks.Task.Delay(2000);
+                        VRCSdkControlPanel.TryGetBuilder<IVRCSdkWorldBuilderApi>(out builder);
+                    }
+                }
                 Debug.Log("[MmdWorld.Command] Build & Test を始めた" + (autoTest ? "（12秒後に自動で枠1に入って再生）" : ""));
             }
             catch (Exception e)
@@ -117,13 +159,47 @@ namespace MmdWorld.EditorTools
             }
             finally
             {
-                if (system != null && autoTest)
-                {
-                    system.autoTestDelay = 0f;
-                    UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(system);
-                    EditorSceneManager.SaveScene(system.gameObject.scene);
-                }
+                // SDK はビルドのときにシーンを読み込み直すので、ビルド前の参照は切れている。今のシーンから探し直して後片付けする
+                if (autoTest) CleanUpAutoTest();
             }
+        }
+
+        /// <summary>
+        /// 自動確認のために入れたもの（隠した着替えの台・見る位置・自動再生の設定）をシーンから消して保存する。
+        /// 着替えの台にはアカウントのアバターの ID が入るので、シーンに残してはいけない。
+        /// </summary>
+        public static void CleanUpAutoTest()
+        {
+            var scene = EditorSceneManager.GetActiveScene();
+            foreach (var root in scene.GetRootGameObjects())
+                if (root.name == "AutoTestPedestal" || root.name == "AutoTestRestorePedestal" || root.name == "AutoTestViewPoint")
+                    UnityEngine.Object.DestroyImmediate(root);
+            var system = UnityEngine.Object.FindObjectsOfType<DanceSystem>(true).FirstOrDefault();
+            if (system != null)
+            {
+                system.autoTestDelay = 0f;
+                system.autoTestScenario = 0;
+                system.autoTestPedestal = null;
+                system.autoTestRestorePedestal = null;
+                system.autoTestViewPoint = null;
+                UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(system);
+            }
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Debug.Log("[MmdWorld.Command] 自動確認のために入れたものをシーンから消した");
+        }
+
+        /// <summary>床の下に隠した着替えの台を置き、アバターの ID を入れる（自動確認のビルドの間だけ）。</summary>
+        static GameObject HiddenPedestal(string name, string avatarId, float y)
+        {
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Packages/com.vrchat.worlds/Samples/UdonExampleScene/Prefabs/AvatarPedestal.prefab"));
+            go.name = name;
+            go.transform.position = new Vector3(0f, y, 0f);
+            var so = new SerializedObject(go.GetComponentInChildren<VRC.SDK3.Components.VRCAvatarPedestal>());
+            so.FindProperty("blueprintId").stringValue = avatarId;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return go;
         }
 
         /// <summary>SDK の設定（VRCSettings）を名前で変える。クラスのある場所が SDK の版で変わるので、名前で探す。</summary>

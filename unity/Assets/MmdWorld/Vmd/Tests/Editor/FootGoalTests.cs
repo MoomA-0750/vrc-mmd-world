@@ -209,6 +209,155 @@ namespace MmdWorld.Vmd.Tests
             Assert.That(worst, Is.LessThan(0.03f), "Controller の Foot IK ありで、足首の高さが MMD から 3cm 以上ずれる");
         }
 
+        /// <summary>
+        /// その場で踊るクリップをステーションと同じように「軌跡の位置と向きで動かした親」の下で流すと、元のクリップで流したときと
+        /// 同じ場所・同じ向きに体が来るか。WAVEFILE の軌跡に体の移動と回る振りが入っているかも見る。
+        /// </summary>
+        [Test]
+        public void InPlace_PlusTrajectoryMatchesOriginal()
+        {
+            var motion = VmdReader.Read(WavefilePath);
+            var settings = new VmdBakeSettings();
+            var clip = VmdHumanoidBaker.Bake(motion, settings, out var report);
+            var (inPlace, trajectory) = VmdInPlace.Split(clip, report.HumanScale, report.EyeHeight);
+            var skeleton = new MmdSkeleton(settings.ArmAngle, settings.Scale);
+
+            float minX = float.MaxValue, maxX = float.MinValue, minYaw = float.MaxValue, maxYaw = float.MinValue;
+            for (int i = 0; i < trajectory.Count; i++)
+            {
+                minX = Mathf.Min(minX, trajectory.x[i] * trajectory.eyeHeight); maxX = Mathf.Max(maxX, trajectory.x[i] * trajectory.eyeHeight);
+                minYaw = Mathf.Min(minYaw, trajectory.yaw[i]); maxYaw = Mathf.Max(maxYaw, trajectory.yaw[i]);
+            }
+            Debug.Log($"[VmdTests] 軌跡: 目の高さ {trajectory.eyeHeight:F2}m、左右 {minX * 100f:F0}〜{maxX * 100f:F0}cm、向き {minYaw:F0}〜{maxYaw:F0}°");
+            Assert.That(maxX - minX, Is.GreaterThan(0.3f), "体の左右の移動が軌跡に入っていない");
+            Assert.That(maxYaw - minYaw, Is.GreaterThan(180f), "回る振りが軌跡に入っていない");
+
+            using (var a = new MmdHumanoidRig(skeleton, "Original"))
+            using (var b = new MmdHumanoidRig(skeleton, "InPlace"))
+            {
+                var ra = a.Root.GetComponent<Animator>();
+                var rb = b.Root.GetComponent<Animator>();
+                if (ra == null) ra = a.Root.AddComponent<Animator>();
+                if (rb == null) rb = b.Root.AddComponent<Animator>();
+                ra.avatar = a.Avatar; rb.avatar = b.Avatar;
+                ra.applyRootMotion = rb.applyRootMotion = false;
+                float worst = 0f, worstAngle = 0f;
+                using (var pa = new Player(ra, clip, true))
+                using (var pb = new Player(rb, inPlace, true))
+                {
+                    for (int i = 0; i < trajectory.Count; i += 30)
+                    {
+                        float t = i / trajectory.sampleRate;
+                        // ステーションと同じく、親（リグのルート）を軌跡の位置と向きに置く
+                        b.Root.transform.SetPositionAndRotation(
+                            new Vector3(trajectory.x[i], 0f, trajectory.z[i]) * trajectory.eyeHeight,
+                            Quaternion.Euler(0f, trajectory.yaw[i], 0f));
+                        pa.Evaluate(t);
+                        pb.Evaluate(t);
+                        var ha = ra.GetBoneTransform(HumanBodyBones.Hips);
+                        var hb = rb.GetBoneTransform(HumanBodyBones.Hips);
+                        worst = Mathf.Max(worst, Vector3.Distance(ha.position, hb.position));
+                        worstAngle = Mathf.Max(worstAngle, Quaternion.Angle(ha.rotation, hb.rotation));
+                    }
+                }
+                Debug.Log($"[VmdTests] その場のクリップ + 軌跡 と元のクリップの腰のずれ: 最大 {worst * 100f:F1}cm {worstAngle:F1}°");
+                Assert.That(worst, Is.LessThan(0.03f));
+                Assert.That(worstAngle, Is.LessThan(3f));
+            }
+            Object.DestroyImmediate(clip);
+            Object.DestroyImmediate(inPlace);
+            Object.DestroyImmediate(trajectory);
+        }
+
+        /// <summary>
+        /// ステーション用の、区切りの時刻から始まる Controller（ステートの cycleOffset で開始位置をずらす）が、
+        /// 座った瞬間にその時刻の姿勢から始まり、その後も時刻どおり進むか。
+        /// </summary>
+        [Test]
+        public void SegmentController_StartsAtItsTime()
+        {
+            var motion = VmdReader.Read(WavefilePath);
+            var settings = new VmdBakeSettings();
+            var clip = VmdHumanoidBaker.Bake(motion, settings, out var report);
+            var (inPlace, trajectory) = VmdInPlace.Split(clip, report.HumanScale, report.EyeHeight);
+            var skeleton = new MmdSkeleton(settings.ArmAngle, settings.Scale);
+            var sb = new StringBuilder("[VmdTests] 区切りの Controller:");
+            float worst = 0f;
+            using (var a = new MmdHumanoidRig(skeleton, "Reference"))
+            using (var b = new MmdHumanoidRig(skeleton, "Segment"))
+            {
+                var ra = a.Root.GetComponent<Animator>(); if (ra == null) ra = a.Root.AddComponent<Animator>();
+                var rb = b.Root.GetComponent<Animator>(); if (rb == null) rb = b.Root.AddComponent<Animator>();
+                ra.avatar = a.Avatar; rb.avatar = b.Avatar;
+                ra.applyRootMotion = rb.applyRootMotion = false;
+                using (var pa = new Player(ra, inPlace, true))
+                {
+                    foreach (float start in new[] { 10f, 40f, 80f })
+                    {
+                        var controller = new UnityEditor.Animations.AnimatorController();
+                        controller.AddLayer("Base");
+                        var state = controller.layers[0].stateMachine.AddState("Dance");
+                        state.motion = inPlace;
+                        state.iKOnFeet = true;
+                        state.cycleOffset = start / inPlace.length;
+                        rb.runtimeAnimatorController = controller;
+                        rb.Rebind();
+                        rb.Update(0f);
+                        foreach (float after in new[] { 0f, 1f, 3f })
+                        {
+                            if (after > 0f) rb.Update(after - (after == 3f ? 1f : 0f));
+                            pa.Evaluate(start + after);
+                            float d = 0f;
+                            foreach (var bone in new[] { HumanBodyBones.LeftHand, HumanBodyBones.RightHand, HumanBodyBones.LeftFoot, HumanBodyBones.Head })
+                                d = Mathf.Max(d, Vector3.Distance(ra.GetBoneTransform(bone).position, rb.GetBoneTransform(bone).position));
+                            sb.Append($" {start}+{after}秒: {d * 100f:F1}cm");
+                            worst = Mathf.Max(worst, d);
+                        }
+                        rb.runtimeAnimatorController = null;
+                        Object.DestroyImmediate(controller);
+                    }
+                }
+            }
+            Debug.Log(sb.ToString());
+            Object.DestroyImmediate(clip);
+            Object.DestroyImmediate(inPlace);
+            Object.DestroyImmediate(trajectory);
+            Assert.That(worst, Is.LessThan(0.02f), "区切りの Controller が、その時刻の姿勢から始まっていない");
+        }
+
+        /// <summary>
+        /// 記録用: WAVEFILE の区切りの頭の前後で、両手が肩と同じ高さに広がる（T ポーズのように見える）振りがあるかを出す。
+        /// VRChat でシーク直後に腕を横に広げた姿勢が写ったので、振り付けか座り直しの崩れかを見分けるのに使う。
+        /// </summary>
+        [Test]
+        public void Record_ArmsAroundSegmentHeads()
+        {
+            var motion = VmdReader.Read(WavefilePath);
+            var settings = new VmdBakeSettings();
+            var clip = VmdHumanoidBaker.Bake(motion, settings, out _);
+            var skeleton = new MmdSkeleton(settings.ArmAngle, settings.Scale);
+            var sb = new StringBuilder("[VmdTests] 手の高さ − 肩の高さ（左/右, cm）と両手の間隔:");
+            using (var rig = new MmdHumanoidRig(skeleton, "ArmRecord"))
+            {
+                var animator = rig.Root.GetComponent<Animator>(); if (animator == null) animator = rig.Root.AddComponent<Animator>();
+                animator.avatar = rig.Avatar;
+                animator.applyRootMotion = false;
+                using (var player = new Player(animator, clip, true))
+                {
+                    foreach (float t in new[] { 29.5f, 30f, 30.3f, 30.6f, 31f, 39.5f, 40f, 40.3f, 40.6f })
+                    {
+                        player.Evaluate(t);
+                        float sh = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm).position.y;
+                        var l = animator.GetBoneTransform(HumanBodyBones.LeftHand).position;
+                        var r = animator.GetBoneTransform(HumanBodyBones.RightHand).position;
+                        sb.Append($" {t}秒: {(l.y - sh) * 100f:F0}/{(r.y - sh) * 100f:F0} 間隔{Vector3.Distance(l, r) * 100f:F0}");
+                    }
+                }
+            }
+            Debug.Log(sb.ToString());
+            Object.DestroyImmediate(clip);
+        }
+
         static Transform FindToes(Transform foot)
         {
             foreach (Transform c in foot)

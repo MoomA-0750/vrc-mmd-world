@@ -14,5 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   slotCount: 4
   countdownSeconds: 3
+  rotateDancers: 1
   previewDancers: []
+  slotAvatars: []
   pedestalAvatarIds: []

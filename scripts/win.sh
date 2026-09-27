@@ -101,7 +101,9 @@ PS
       echo "Windows 側に新しいファイルは無い"; exit 0
     fi
     git -C "$REPO" diff --stat win/main~1 win/main
-    git -C "$REPO" diff --name-only --diff-filter=AM -z win/main~1 win/main | xargs -0 -r git -C "$REPO" checkout win/main --
+    # 名前の変更として見えるもの（生成物は中身が似ていて起きやすい）も、追加と削除として受け取る
+    git -C "$REPO" diff --no-renames --name-only --diff-filter=AM -z win/main~1 win/main | xargs -0 -r git -C "$REPO" checkout win/main --
+    git -C "$REPO" diff --no-renames --name-only --diff-filter=D -z win/main~1 win/main | xargs -0 -r git -C "$REPO" rm -q --ignore-unmatch --
     ;;
   *)
     sed -n 2,11p "$0"; exit 1 ;;

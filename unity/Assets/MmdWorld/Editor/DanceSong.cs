@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace MmdWorld.EditorTools
@@ -14,6 +15,10 @@ namespace MmdWorld.EditorTools
         public float audioOffset;
         [Tooltip("並び順（小さいほど先）")]
         public int order;
+        [Tooltip("シーク・範囲再生の区切りの間隔（秒）。区切りの時刻から踊りを始め直すので、細かいほど Controller が増える")]
+        public float seekStep = 10f;
+        [Tooltip("区切りの時刻（秒）を直接並べる（フレーズの頭など）。空なら seekStep ごと。0 秒は必ず入る")]
+        public List<float> seekPoints = new List<float>();
 
         public string DisplayTitle => string.IsNullOrEmpty(title) ? name : title;
     }

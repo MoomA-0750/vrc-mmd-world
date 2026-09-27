@@ -194,6 +194,8 @@ namespace MmdWorld.EditorTools
                 UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(system);
             }
             SetStationMobility(VRC.SDKBase.VRCStation.Mobility.ImmobilizeForVehicle);
+            // 消した着替えの台のネットワーク ID がシーンに残ると、VRChat で読み込むときに失敗して Udon が動かなくなる
+            WorldBuilder.PruneNetworkIds();
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             Debug.Log("[MmdWorld.Command] 自動確認のために入れたものをシーンから消した");

@@ -139,6 +139,7 @@ namespace MmdWorld.EditorTools
             system.seekBars = new[] { panelBar, tabletBar };
             UdonSharpEditorUtility.CopyProxyToUdon(system);
 
+            PruneNetworkIds();
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
@@ -778,6 +779,33 @@ namespace MmdWorld.EditorTools
             seekBar.playhead = playhead;
             seekBar.ticks = ticks;
             UdonSharpEditorUtility.CopyProxyToUdon(seekBar);
+        }
+
+        /// <summary>
+        /// シーンの VRCWorld に登録されたネットワーク ID のうち、オブジェクトが無くなったものを消す。
+        /// 自動確認で一時的に置いた着替えの台などの ID が残ると、VRChat で読み込むときに「Found N errors while configuring network IDs」となり、Udon が動かなくなる。
+        /// </summary>
+        public static void PruneNetworkIds()
+        {
+            foreach (var descriptor in Object.FindObjectsOfType<VRC.SDKBase.VRC_SceneDescriptor>(true))
+            {
+                var so = new SerializedObject(descriptor);
+                var ids = so.FindProperty("NetworkIDs");
+                if (ids == null || !ids.isArray) continue;
+                int removed = 0;
+                for (int i = ids.arraySize - 1; i >= 0; i--)
+                {
+                    var go = ids.GetArrayElementAtIndex(i).FindPropertyRelative("gameObject");
+                    if (go != null && go.objectReferenceValue == null)
+                    {
+                        ids.DeleteArrayElementAtIndex(i);
+                        removed++;
+                    }
+                }
+                if (removed == 0) continue;
+                so.ApplyModifiedProperties();
+                Debug.Log($"[MmdWorld] 無くなったオブジェクトのネットワーク ID を {removed} 件消した");
+            }
         }
 
         /// <summary>Input.GetKeyDown(string) に渡す名前。</summary>

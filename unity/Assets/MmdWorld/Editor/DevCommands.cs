@@ -125,7 +125,11 @@ namespace MmdWorld.EditorTools
                 viewPoint = new GameObject("AutoTestViewPoint");
                 var slot1 = system.slots.Length > 0 ? system.slots[0].transform.parent : null;
                 if (slot1 != null)
-                    viewPoint.transform.SetPositionAndRotation(slot1.position + slot1.forward * 1.5f, Quaternion.LookRotation(-slot1.forward));
+                {
+                    // 踊りながら動く確認では、枠の前へ 4m まで出てくるので、離れて見る
+                    float distance = scenario == 3 ? 7f : 1.5f;
+                    viewPoint.transform.SetPositionAndRotation(slot1.position + slot1.forward * distance, Quaternion.LookRotation(-slot1.forward));
+                }
                 system.autoTestViewPoint = viewPoint.transform;
                 if (MmdWorldLibrary.IsValidAvatarId(avatarId))
                 {

@@ -44,7 +44,7 @@ namespace MmdWorld
         public DanceSeekBar[] seekBars;
 
         [Header("踊りながら動く")]
-        [Tooltip("踊っている間、スティック・WASD で自分の枠（ステーションの親）ごと動けるようにする。向きは頭の向き")]
+        [Tooltip("踊っている間、スティック・WASD で自分の枠（ステーションの親）ごと動けるようにする。前は、VR では頭の向き、デスクトップでは枠の向き")]
         public bool driveWhileDancing = true;
         [Tooltip("動く速さ（メートル/秒）")]
         public float driveSpeed = 1.5f;
@@ -748,13 +748,16 @@ namespace MmdWorld
             foreach (var slot in slots)
                 if (slot != null && slot.IsLocalDancer()) mine = slot;
             if (mine == null || mine.GetStationRoot() == null) return;
-            var forward = Networking.LocalPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).rotation * Vector3.forward;
+            var parent = mine.GetStationRoot().parent;
+            // VR は実際の頭の向きを前にする。デスクトップは視点が踊りで回るので、枠の向き（客席の方）を前にする
+            var forward = Networking.LocalPlayer.IsUserInVR() || parent == null
+                ? Networking.LocalPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).rotation * Vector3.forward
+                : parent.forward;
             forward.y = 0f;
             if (forward.sqrMagnitude < 1e-4f) return;
             forward.Normalize();
             var right = new Vector3(forward.z, 0f, -forward.x);
             var world = (forward * input.y + right * input.x) * driveSpeed * Time.deltaTime;
-            var parent = mine.GetStationRoot().parent;
             var local = parent != null ? parent.InverseTransformDirection(world) : world;
             var drive = mine.GetDrive() + local;
             drive.y = 0f;

@@ -135,7 +135,7 @@ namespace MmdWorld.EditorTools
             system.tabletTitleText = tabletTitle;
             system.tabletStatusText = tabletStatus;
             system.tablet = tablet;
-            system.restoreController = BuildRestoreController();
+            system.restoreController = null; BuildRestoreController();
             system.seekBars = new[] { panelBar, tabletBar };
             UdonSharpEditorUtility.CopyProxyToUdon(system);
 

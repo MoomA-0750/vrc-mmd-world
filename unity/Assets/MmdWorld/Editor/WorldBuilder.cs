@@ -64,6 +64,9 @@ namespace MmdWorld.EditorTools
             EnsureProgramAsset<DanceSlot>();
             EnsureProgramAsset<DanceButton>();
             EnsureProgramAsset<DanceTablet>();
+            // batchmode では U# のコンパイルが走らないことがあり、新しいスクリプトのプログラムが未コンパイルのままだと
+            // コンポーネントに値を入れられない（outdated behaviour version）。組み立ての前に必ず1回コンパイルする
+            UdonSharpCompilerV1.CompileSync();
 
             var settings = MmdWorldSettings.LoadOrCreate();
             _slotCount = Mathf.Clamp(settings.slotCount, 1, 16);

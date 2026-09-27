@@ -241,7 +241,7 @@ namespace MmdWorld.Vmd.Tests
                 if (rb == null) rb = b.Root.AddComponent<Animator>();
                 ra.avatar = a.Avatar; rb.avatar = b.Avatar;
                 ra.applyRootMotion = rb.applyRootMotion = false;
-                float worst = 0f, worstAngle = 0f;
+                float worst = 0f, worstAngle = 0f, worstFoot = 0f;
                 using (var pa = new Player(ra, clip, true))
                 using (var pb = new Player(rb, inPlace, true))
                 {
@@ -258,9 +258,13 @@ namespace MmdWorld.Vmd.Tests
                         var hb = rb.GetBoneTransform(HumanBodyBones.Hips);
                         worst = Mathf.Max(worst, Vector3.Distance(ha.position, hb.position));
                         worstAngle = Mathf.Max(worstAngle, Quaternion.Angle(ha.rotation, hb.rotation));
+                        // 足も比べる（足の IK の目標が、その場にしたクリップで元の位置に取り残されていないか）
+                        foreach (var bone in new[] { HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot })
+                            worstFoot = Mathf.Max(worstFoot, Vector3.Distance(ra.GetBoneTransform(bone).position, rb.GetBoneTransform(bone).position));
                     }
                 }
-                Debug.Log($"[VmdTests] その場のクリップ + 軌跡 と元のクリップの腰のずれ: 最大 {worst * 100f:F1}cm {worstAngle:F1}°");
+                Debug.Log($"[VmdTests] その場のクリップ + 軌跡 と元のクリップの腰のずれ: 最大 {worst * 100f:F1}cm {worstAngle:F1}°、足のずれ: 最大 {worstFoot * 100f:F1}cm");
+                Assert.That(worstFoot, Is.LessThan(0.03f), "その場のクリップで足が取り残されている");
                 Assert.That(worst, Is.LessThan(0.03f));
                 Assert.That(worstAngle, Is.LessThan(3f));
             }

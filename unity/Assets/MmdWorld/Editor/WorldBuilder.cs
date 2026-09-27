@@ -553,6 +553,12 @@ namespace MmdWorld.EditorTools
             var sizes = new List<Vector2>();
             var keys = new List<string>();
             var keyLabels = new List<GameObject>();
+            // 文字の位置は、全部作り終えてから入れ直す（最後に作った文字の位置が (0, 0) に戻ることがあった）
+            var placements = new List<(Transform canvas, Vector3 position)>
+            {
+                (title.transform.parent, new Vector3(0f, 0.135f, -0.001f)),
+                (status.transform.parent, new Vector3(0f, 0.1f, -0.001f)),
+            };
             var tablet = UdonSharpUndo.AddComponent<DanceTablet>(rootGo);
             foreach (var d in defs)
             {
@@ -578,15 +584,19 @@ namespace MmdWorld.EditorTools
 
                 var label = CreateText(body.transform, "Label_" + d.evt, d.text, 12, new Vector2(w * 1000f, h * 1000f));
                 label.transform.parent.localPosition = new Vector3(x, y, -0.001f);
+                placements.Add((label.transform.parent, new Vector3(x, y, -0.001f)));
                 if (d.key != KeyCode.None)
                 {
                     var keyLabel = CreateText(body.transform, "Key_" + d.evt, "[" + KeyName(d.key) + "]", 8, new Vector2(w * 1000f, h * 1000f));
                     keyLabel.alignment = TextAnchor.UpperLeft;
                     keyLabel.color = new Color(1f, 0.85f, 0.3f);
                     keyLabel.transform.parent.localPosition = new Vector3(x + 0.003f, y - 0.002f, -0.0015f);
+                    placements.Add((keyLabel.transform.parent, new Vector3(x + 0.003f, y - 0.002f, -0.0015f)));
                     keyLabels.Add(keyLabel.transform.parent.gameObject);
                 }
             }
+
+            foreach (var (canvas, position) in placements) canvas.localPosition = position;
 
             // 指先の目印（タブレットとは別に置く。DanceTablet が右手のコントローラーから割り出した位置へ動かす）
             var pointer = GameObject.CreatePrimitive(PrimitiveType.Sphere);

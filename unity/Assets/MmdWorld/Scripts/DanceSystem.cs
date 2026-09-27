@@ -121,6 +121,8 @@ namespace MmdWorld
         float _audioVolume = 1f;
         float _moveX;
         float _moveY;
+        /// <summary>自動確認で入れる、スティックを倒したことにする入力</summary>
+        Vector2 _autoMove;
 
         void Start()
         {
@@ -154,6 +156,23 @@ namespace MmdWorld
         }
 
         /// <summary>自動確認の間、2秒ごとに自分の位置と、枠1の踊り手の位置をログに出す（踊りながら動けるかの検証）。</summary>
+        public void _AutoTestMoveForward() { _AutoTestMove(new Vector2(0f, 1f)); }
+        public void _AutoTestMoveRight() { _AutoTestMove(new Vector2(1f, 0f)); }
+        public void _AutoTestMoveBack() { _AutoTestMove(new Vector2(0f, -1f)); }
+        public void _AutoTestMoveLeft() { _AutoTestMove(new Vector2(-1f, 0f)); }
+
+        void _AutoTestMove(Vector2 move)
+        {
+            Debug.Log("[MmdWorld] 自動確認: スティック " + move.ToString("F0"));
+            _autoMove = move;
+            SendCustomEventDelayedSeconds(nameof(_AutoTestMoveRelease), 3f);
+        }
+
+        public void _AutoTestMoveRelease()
+        {
+            _autoMove = Vector2.zero;
+        }
+
         public void _AutoTestLogPosition()
         {
             var local = Networking.LocalPlayer;
@@ -163,7 +182,7 @@ namespace MmdWorld
             if (Utilities.IsValid(dancer))
                 line += " / 枠1 " + dancer.GetPosition().ToString("F2") + " 骨盤 " + dancer.GetBonePosition(HumanBodyBones.Hips).ToString("F2");
             if (slots.Length > 0 && slots[0] != null) line += " / 席 " + slots[0].GetStationRoot().position.ToString("F2") + " 動かした分 " + slots[0].GetDrive().ToString("F2");
-            line += " / 入力 " + _moveX.ToString("F1") + "," + _moveY.ToString("F1")
+            line += " / 入力 " + _moveX.ToString("F1") + "," + _moveY.ToString("F1") + " 自動 " + _autoMove.ToString("F0")
                 + " キー " + (Input.GetKey(KeyCode.W) ? "W" : "") + (Input.GetKey(KeyCode.A) ? "A" : "") + (Input.GetKey(KeyCode.S) ? "S" : "") + (Input.GetKey(KeyCode.D) ? "D" : "")
                 + " 軸 " + Input.GetAxisRaw("Horizontal").ToString("F1") + "," + Input.GetAxisRaw("Vertical").ToString("F1");
             line += " / 曲 " + (_playing ? CurrentTime().ToString("F1") : "-");
@@ -192,6 +211,17 @@ namespace MmdWorld
                 return;
             }
             Play();
+            if (autoTestScenario == 3)
+            {
+                // 踊りながら動く: 始まって 8 秒から、前・右・後ろ・左へ 3 秒ずつスティックを倒したことにする。35 秒で止めて降りる
+                Debug.Log("[MmdWorld] 自動確認: 踊りながら枠ごと動く");
+                SendCustomEventDelayedSeconds(nameof(_AutoTestMoveForward), countdownSeconds + 8f);
+                SendCustomEventDelayedSeconds(nameof(_AutoTestMoveRight), countdownSeconds + 14f);
+                SendCustomEventDelayedSeconds(nameof(_AutoTestMoveBack), countdownSeconds + 20f);
+                SendCustomEventDelayedSeconds(nameof(_AutoTestMoveLeft), countdownSeconds + 26f);
+                SendCustomEventDelayedSeconds(nameof(_AutoTestStop), countdownSeconds + 35f);
+                return;
+            }
             // シークも試す: 始まって 20 秒で1つ先へ、35 秒で1つ前へ
             SendCustomEventDelayedSeconds(nameof(_AutoTestSeekForward), 23f);
             SendCustomEventDelayedSeconds(nameof(_AutoTestSeekBack), 38f);
@@ -706,7 +736,13 @@ namespace MmdWorld
         void DriveLocal()
         {
             if (!driveWhileDancing || _localStation == null) return;
-            var input = new Vector2(_moveX, _moveY);
+            var input = new Vector2(_moveX, _moveY) + _autoMove;
+            // デスクトップは WASD も直接読む（座っている間に VRChat が移動のイベントを渡さない場合に備える）
+            if (Input.GetKey(KeyCode.W)) input.y += 1f;
+            if (Input.GetKey(KeyCode.S)) input.y -= 1f;
+            if (Input.GetKey(KeyCode.D)) input.x += 1f;
+            if (Input.GetKey(KeyCode.A)) input.x -= 1f;
+            input = Vector2.ClampMagnitude(input, 1f);
             if (input.sqrMagnitude < 0.01f) return;
             DanceSlot mine = null;
             foreach (var slot in slots)

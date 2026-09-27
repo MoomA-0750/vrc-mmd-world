@@ -192,7 +192,7 @@ namespace MmdWorld.EditorTools
             var sm = controller.layers[0].stateMachine;
             var dance = sm.AddState("Dance");
             // 体の移動と向きは、DanceSystem がステーションごと動かして出すので、その場で踊るクリップを使う
-            var clip = MmdWorldLibrary.InPlaceClip(song);
+            var clip = song.motion; // （実験）移動も入った元のクリップ
             dance.motion = clip;
             // 区切りの時刻から始める（座った瞬間にこのステートが始まる）
             dance.cycleOffset = clip.length > 0f ? startTime / clip.length : 0f;
@@ -307,6 +307,7 @@ namespace MmdWorld.EditorTools
             system.trajStart = starts.ToArray();
             system.trajCount = counts.ToArray();
             system.trajRate = rates.ToArray();
+            system.trajCount = new int[counts.Count]; // （実験）ステーションを動かさない
         }
 
         // ---- お手本・着替えの台 ----

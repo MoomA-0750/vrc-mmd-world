@@ -551,7 +551,7 @@ namespace MmdWorld.EditorTools
             const float cellW = 0.086f, cellH = 0.052f, top = 0.045f;
             var buttons = new List<DanceButton>();
             var sizes = new List<Vector2>();
-            var keys = new List<KeyCode>();
+            var keys = new List<string>();
             var keyLabels = new List<GameObject>();
             var tablet = UdonSharpUndo.AddComponent<DanceTablet>(rootGo);
             foreach (var d in defs)
@@ -574,7 +574,7 @@ namespace MmdWorld.EditorTools
                 buttons.Add(db);
                 // DanceTablet は button.transform.localPosition を面の中心として使うので、z は 0 として扱う（厚みの分は判定の余裕になる）
                 sizes.Add(new Vector2(w, h));
-                keys.Add(d.key);
+                keys.Add(KeyInputName(d.key));
 
                 var label = CreateText(body.transform, "Label_" + d.evt, d.text, 12, new Vector2(w * 1000f, h * 1000f));
                 label.transform.localPosition = new Vector3(x, y, -0.001f);
@@ -613,6 +613,15 @@ namespace MmdWorld.EditorTools
             }
             return (tablet, title, status);
         }
+
+        /// <summary>Input.GetKeyDown(string) に渡す名前。</summary>
+        static string KeyInputName(KeyCode key) => key switch
+        {
+            KeyCode.None => "",
+            KeyCode.Minus => "-",
+            KeyCode.Equals => "=",
+            _ => key.ToString().Replace("Alpha", "").ToLowerInvariant(),
+        };
 
         static string KeyName(KeyCode key) => key switch
         {

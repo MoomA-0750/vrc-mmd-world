@@ -23,13 +23,13 @@ namespace MmdWorld
         [Tooltip("タブレットのボタン。位置と大きさは body の中のローカル座標（メートル）")]
         public DanceButton[] buttons;
         public Vector2[] buttonSizes;
-        [Tooltip("デスクトップで各ボタンを押すキー")]
-        public KeyCode[] desktopKeys;
+        [Tooltip("デスクトップで各ボタンを押すキー（Input.GetKeyDown に渡す名前: \"1\"、\"-\"、\"j\" など。空なら無し）。Udon は KeyCode の配列を扱えないので文字列で持つ")]
+        public string[] desktopKeys;
         [Tooltip("ボタンのキーの表示（デスクトップのときだけ出す）")]
         public GameObject[] desktopKeyLabels;
         [Tooltip("VR で指先を示す小さな球")]
         public Transform pointer;
-        public KeyCode desktopToggleKey = KeyCode.T;
+        public string desktopToggleKey = "t";
 
         [Header("置き方")]
         [Tooltip("VR: 出したとき、頭からどこに置くか（頭の向きの前・下）")]
@@ -162,7 +162,7 @@ namespace MmdWorld
             var head = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
             transform.SetPositionAndRotation(head.position + head.rotation * desktopOffset, head.rotation);
             for (int i = 0; i < buttons.Length && i < desktopKeys.Length; i++)
-                if (desktopKeys[i] != KeyCode.None && Input.GetKeyDown(desktopKeys[i])) Press(i);
+                if (desktopKeys[i] != "" && Input.GetKeyDown(desktopKeys[i])) Press(i);
         }
 
         /// <summary>i 番目のボタンを押す（指・キー・自動確認から）。</summary>

@@ -120,6 +120,7 @@ namespace MmdWorld
 
         public void _AutoTest()
         {
+            _AutoTestLogPosition();
             // 複数のクライアントで試すときは、最初に入った人だけが踊る。ほかの人は枠1の正面から見る
             if (!Networking.IsMaster)
             {
@@ -139,6 +140,21 @@ namespace MmdWorld
                 return;
             }
             _AutoTestDance();
+        }
+
+        /// <summary>自動確認の間、2秒ごとに自分の位置と、枠1の踊り手の位置をログに出す（踊りながら動けるかの検証）。</summary>
+        public void _AutoTestLogPosition()
+        {
+            var local = Networking.LocalPlayer;
+            if (!Utilities.IsValid(local)) return;
+            string line = "[MmdWorld] 位置: 自分 " + local.GetPosition().ToString("F2") + (_localStation != null ? " 席" : " 立ち");
+            var dancer = slots.Length > 0 && slots[0] != null ? slots[0].GetDancer() : null;
+            if (Utilities.IsValid(dancer))
+                line += " / 枠1 " + dancer.GetPosition().ToString("F2") + " 骨盤 " + dancer.GetBonePosition(HumanBodyBones.Hips).ToString("F2");
+            if (slots.Length > 0 && slots[0] != null) line += " / 席 " + slots[0].GetStationRoot().position.ToString("F2");
+            line += " / 曲 " + (_playing ? CurrentTime().ToString("F1") : "-");
+            Debug.Log(line);
+            SendCustomEventDelayedSeconds(nameof(_AutoTestLogPosition), 2f);
         }
 
         public void _AutoTestDance()

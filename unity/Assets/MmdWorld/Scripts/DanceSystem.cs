@@ -39,6 +39,8 @@ namespace MmdWorld
         public Text tabletTitleText;
         public Text tabletStatusText;
         public DanceTablet tablet;
+        [Tooltip("再生位置・範囲・区切りを示すバー（パネルとタブレット）")]
+        public DanceSeekBar[] seekBars;
 
         [Header("体の軌跡（ワールドを組み立てるメニューが入れる）")]
         [Tooltip("全曲ぶんをつなげた軌跡。位置は目の高さを 1 とした値、向きは度")]
@@ -471,6 +473,7 @@ namespace MmdWorld
             SyncAudio(song, t);
             SyncPreview(song, t, songLengths[song]);
             MoveStations(song, t);
+            SetSeekBarTime(t);
             SetStatus(FormatTime(t) + " / " + FormatTime(songLengths[song]) + RangeLabel(song));
         }
 
@@ -562,6 +565,7 @@ namespace MmdWorld
             if (audioSource != null) audioSource.volume = _audioVolume * previewVolume;
             SyncAudio(song, t);
             SyncPreview(song, t, songLengths[song]);
+            SetSeekBarTime(t);
             SetStatus("プレビュー（自分だけ） " + FormatTime(t) + " / " + FormatTime(songLengths[song]) + RangeLabel(song));
         }
 
@@ -754,6 +758,30 @@ namespace MmdWorld
             if (titleText != null) titleText.text = title;
             if (tabletTitleText != null) tabletTitleText.text = title;
             if (!_playing && !_localPreview) SetStatus("停止中" + (SongCount() > 0 ? RangeLabel(_songIndex) : ""));
+            RefreshSeekBars();
+        }
+
+        /// <summary>バーに曲の長さ・区切り・範囲を入れ直す。止まっているときは再生位置を範囲の開始点に置く。</summary>
+        void RefreshSeekBars()
+        {
+            if (seekBars == null || SongCount() == 0) return;
+            int song = _songIndex;
+            int start = segmentStart != null && song < segmentStart.Length ? segmentStart[song] : 0;
+            int count = segmentCount != null && song < segmentCount.Length ? segmentCount[song] : 0;
+            foreach (var bar in seekBars)
+            {
+                if (bar == null) continue;
+                bar.SetSong(songLengths[song], segmentTimes, start, count);
+                bar.SetRange(SegmentTime(song, _rangeStart), RangeEndTime(song));
+                if (!_playing && !_localPreview) bar.SetTime(SegmentTime(song, _rangeStart));
+            }
+        }
+
+        void SetSeekBarTime(float t)
+        {
+            if (seekBars == null) return;
+            foreach (var bar in seekBars)
+                if (bar != null) bar.SetTime(t);
         }
 
         void SetStatus(string s)

@@ -183,8 +183,9 @@ namespace MmdWorld
             string line = "[MmdWorld] 位置: 自分 " + local.GetPosition().ToString("F2") + (_localStation != null ? " 席" : " 立ち");
             var dancer = slots.Length > 0 && slots[0] != null ? slots[0].GetDancer() : null;
             if (Utilities.IsValid(dancer))
-                line += " / 枠1 " + dancer.GetPosition().ToString("F2") + " 骨盤 " + dancer.GetBonePosition(HumanBodyBones.Hips).ToString("F2");
-            if (slots.Length > 0 && slots[0] != null) line += " / 席 " + slots[0].GetStationRoot().position.ToString("F2") + " 動かした分 " + slots[0].GetDrive().ToString("F2");
+                line += " / 枠1 " + dancer.GetPosition().ToString("F2") + " 骨盤 " + dancer.GetBonePosition(HumanBodyBones.Hips).ToString("F2")
+                    + " 腰の向き " + dancer.GetBoneRotation(HumanBodyBones.Hips).eulerAngles.y.ToString("F0");
+            if (slots.Length > 0 && slots[0] != null) line += " / 席 " + slots[0].GetStationRoot().position.ToString("F2") + " 向き " + slots[0].GetStationRoot().eulerAngles.y.ToString("F0") + " 動かした分 " + slots[0].GetDrive().ToString("F2");
             line += " / 入力 " + _moveX.ToString("F1") + "," + _moveY.ToString("F1") + " 自動 " + _autoMove.ToString("F0")
                 + " キー " + (Input.GetKey(KeyCode.W) ? "W" : "") + (Input.GetKey(KeyCode.A) ? "A" : "") + (Input.GetKey(KeyCode.S) ? "S" : "") + (Input.GetKey(KeyCode.D) ? "D" : "")
                 + " 軸 " + Input.GetAxisRaw("Horizontal").ToString("F1") + "," + Input.GetAxisRaw("Vertical").ToString("F1");

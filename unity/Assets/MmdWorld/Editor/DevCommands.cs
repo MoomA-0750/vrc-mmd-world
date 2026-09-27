@@ -200,11 +200,8 @@ namespace MmdWorld.EditorTools
                 foreach (var station in slot.stations)
                 {
                     if (station == null) continue;
-                    // Mobile で歩くと、ふつうは歩いた時点でステーションから降りてしまう。降りないように、降りる操作も止める（降りるのはタブレットの「踊る / やめる」から）
-                    bool mobile = mobility == VRC.SDKBase.VRCStation.Mobility.Mobile;
-                    if (station.PlayerMobility == mobility && station.disableStationExit == mobile) continue;
+                    if (station.PlayerMobility == mobility) continue;
                     station.PlayerMobility = mobility;
-                    station.disableStationExit = mobile;
                     EditorUtility.SetDirty(station);
                 }
             Debug.Log("[MmdWorld.Command] ステーションの PlayerMobility: " + mobility);

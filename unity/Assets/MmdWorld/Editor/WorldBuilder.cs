@@ -437,7 +437,8 @@ namespace MmdWorld.EditorTools
                 station.PlayerMobility = VRC.SDKBase.VRCStation.Mobility.Immobilize;
                 station.seated = false;
                 station.canUseStationFromStation = true;
-                station.disableStationExit = false;
+                // 歩く操作で降りないようにする（踊っている間は、スティック・WASD で DanceSystem が枠ごと動かす）。降りるのは枠の台・タブレットの「踊る / やめる」・停止から
+                station.disableStationExit = true;
                 station.animatorController = firstController;
                 station.stationEnterPlayerLocation = stationGo.transform;
                 station.stationExitPlayerLocation = root.transform;

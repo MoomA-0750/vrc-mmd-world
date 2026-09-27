@@ -135,7 +135,9 @@ namespace MmdWorld.EditorTools
             system.tabletTitleText = tabletTitle;
             system.tabletStatusText = tabletStatus;
             system.tablet = tablet;
-            system.restoreController = null; BuildRestoreController();
+            // 1つだけの変数に AnimatorController を入れると、VRChat でワールドを読み込めなくなった（エディタの型のまま保存されるらしい）。区切りの Controller と同じく配列で渡す
+            var restore = BuildRestoreController();
+            system.restoreControllers = restore != null ? new RuntimeAnimatorController[] { restore } : new RuntimeAnimatorController[0];
             system.seekBars = new[] { panelBar, tabletBar };
             UdonSharpEditorUtility.CopyProxyToUdon(system);
 
@@ -504,12 +506,9 @@ namespace MmdWorld.EditorTools
                 station.stationExitPlayerLocation = root.transform;
                 stationList.Add(station);
                 // 誰が入った・出たかを DanceSystem に知らせる（座らせていないのに入ったら降ろす）
-                if (false)
-                {
-                    var events = UdonSharpUndo.AddComponent<DanceStation>(stationGo);
-                    events.system = system;
-                    UdonSharpEditorUtility.CopyProxyToUdon(events);
-                }
+                var events = UdonSharpUndo.AddComponent<DanceStation>(stationGo);
+                events.system = system;
+                UdonSharpEditorUtility.CopyProxyToUdon(events);
             }
 
             // ワールドのアバターを選ぶボタン（アバターが1体もいないワールドでは押しても何も起きない）

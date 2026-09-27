@@ -42,8 +42,8 @@ namespace MmdWorld
         public DanceTablet tablet;
         [Tooltip("再生位置・範囲・区切りを示すバー（パネルとタブレット）")]
         public DanceSeekBar[] seekBars;
-        [Tooltip("降りる前に座り直す、トラッキングを元に戻すだけの Controller（VRC Animator Tracking Control で全身を Tracking にする）。無ければそのまま降りる")]
-        public RuntimeAnimatorController restoreController;
+        [Tooltip("降りる前に座り直す、トラッキングを元に戻すだけの Controller（VRC Animator Tracking Control で全身を Tracking にする）。無ければそのまま降りる。1つだけの変数だと VRChat で読み込めなかったので配列（先頭を使う）")]
+        public RuntimeAnimatorController[] restoreControllers;
         [Tooltip("トラッキングを戻す Controller に座ってから降りるまでの秒数")]
         public float restoreSeconds = 0.5f;
 
@@ -706,10 +706,11 @@ namespace MmdWorld
             _localStation = null;
             _switchPending = false;
             var other = OtherStation(station);
-            if (restoreController != null && other != null)
+            var restore = restoreControllers != null && restoreControllers.Length > 0 ? restoreControllers[0] : null;
+            if (restore != null && other != null)
             {
                 Debug.Log("[MmdWorld] トラッキングを戻してから降りる");
-                other.animatorController = restoreController;
+                other.animatorController = restore;
                 _restoreStation = other;
                 other.UseStation(Networking.LocalPlayer);
                 SendCustomEventDelayedSeconds(nameof(_FinishLeave), restoreSeconds);

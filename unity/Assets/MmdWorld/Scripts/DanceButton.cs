@@ -11,6 +11,12 @@ namespace MmdWorld
 
         public override void Interact()
         {
+            Press();
+        }
+
+        /// <summary>押したときの処理（Interact のほか、タブレットの指先・キーからも呼ぶ）。</summary>
+        public void Press()
+        {
             if (target != null) target.SendCustomEvent(eventName);
         }
     }

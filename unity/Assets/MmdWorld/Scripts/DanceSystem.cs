@@ -35,6 +35,10 @@ namespace MmdWorld
         public Animator[] previewDancers;
         public Text titleText;
         public Text statusText;
+        [Tooltip("手元のタブレットの曲名と状態（パネルと同じものを出す）")]
+        public Text tabletTitleText;
+        public Text tabletStatusText;
+        public DanceTablet tablet;
 
         [Header("体の軌跡（ワールドを組み立てるメニューが入れる）")]
         [Tooltip("全曲ぶんをつなげた軌跡。位置は目の高さを 1 とした値、向きは度")]
@@ -79,7 +83,7 @@ namespace MmdWorld
         public VRCAvatarPedestal autoTestRestorePedestal;
         [Tooltip("自動確認で、見る側のクライアントが立つ場所（枠1の正面）")]
         public Transform autoTestViewPoint;
-        [Tooltip("自動確認の流れ。0: 再生とシーク　1: プレビュー・範囲再生・ループ・途中からの参加")]
+        [Tooltip("自動確認の流れ。0: 再生とシーク　1: プレビュー・範囲再生・ループ・途中からの参加　2: 手元のタブレット")]
         public int autoTestScenario = 0;
 
         bool _autoTestSwitched;
@@ -137,7 +141,15 @@ namespace MmdWorld
 
         public void _AutoTestDance()
         {
-            if (slots.Length > 0 && slots[0] != null) slots[0].ClaimForLocal();
+            if (autoTestScenario != 2 && slots.Length > 0 && slots[0] != null) slots[0].ClaimForLocal();
+            if (autoTestScenario == 2)
+            {
+                // タブレットから操作する: 出す → 踊る → 再生 → 20 秒後に区切り ≫ → 35 秒後に停止 → 閉じる
+                Debug.Log("[MmdWorld] 自動確認: タブレットを出して操作する");
+                if (tablet != null) tablet.Toggle();
+                SendCustomEventDelayedSeconds(nameof(_AutoTestTabletPlay), 3f);
+                return;
+            }
             if (autoTestScenario == 1)
             {
                 // プレビューを 10 秒 → 範囲 0:20〜0:40・ループで再生 → 2 回ループしたら止める
@@ -151,6 +163,27 @@ namespace MmdWorld
             // シークも試す: 始まって 20 秒で1つ先へ、35 秒で1つ前へ
             SendCustomEventDelayedSeconds(nameof(_AutoTestSeekForward), 23f);
             SendCustomEventDelayedSeconds(nameof(_AutoTestSeekBack), 38f);
+        }
+
+        public void _AutoTestTabletPlay()
+        {
+            if (tablet == null) return;
+            tablet.Press(12); // 踊る / やめる
+            tablet.Press(1);  // 再生
+            SendCustomEventDelayedSeconds(nameof(_AutoTestTabletSeek), 23f);
+            SendCustomEventDelayedSeconds(nameof(_AutoTestTabletStop), 38f);
+        }
+
+        public void _AutoTestTabletSeek()
+        {
+            if (tablet != null) tablet.Press(5); // 区切り ≫
+        }
+
+        public void _AutoTestTabletStop()
+        {
+            if (tablet == null) return;
+            tablet.Press(2);  // 停止
+            tablet.Press(13); // 閉じる
         }
 
         public void _AutoTestRangePlay()
@@ -330,6 +363,27 @@ namespace MmdWorld
             ShowIdle();
         }
 
+        /// <summary>
+        /// タブレットの「踊る / やめる」。自分が枠に入っていれば抜けて（踊っていればステーションから降りる）、
+        /// 入っていなければ空いている枠（人もワールドのアバターもいない枠）に入る。再生中なら次の区切りから踊りに入る。
+        /// </summary>
+        public void ToggleLocalJoin()
+        {
+            foreach (var slot in slots)
+            {
+                if (slot == null || !slot.IsLocalDancer()) continue;
+                slot.ReleaseIfLocal();
+                LeaveLocalStation();
+                return;
+            }
+            foreach (var slot in slots)
+            {
+                if (slot == null || slot.GetDancer() != null || slot.GetAvatarIndex() >= 0) continue;
+                slot.ClaimForLocal();
+                return;
+            }
+        }
+
         /// <summary>自分が取っている枠を全部空ける（別の枠を取るときに DanceSlot から呼ぶ）。</summary>
         public void ReleaseLocalSlots()
         {
@@ -382,6 +436,9 @@ namespace MmdWorld
             int song = _songIndex;
             if (song < 0 || song >= SongCount()) return;
 
+            // 踊っている途中で枠から抜けたら（台やタブレットで）、ステーションから降りる
+            if (_localStation != null && !IsLocalInAnySlot()) LeaveLocalStation();
+
             float t = CurrentTime();
             float start = SegmentTime(song, _rangeStart);
             float end = RangeEndTime(song);
@@ -415,6 +472,13 @@ namespace MmdWorld
             SyncPreview(song, t, songLengths[song]);
             MoveStations(song, t);
             SetStatus(FormatTime(t) + " / " + FormatTime(songLengths[song]) + RangeLabel(song));
+        }
+
+        bool IsLocalInAnySlot()
+        {
+            foreach (var slot in slots)
+                if (slot != null && slot.IsLocalDancer()) return true;
+            return false;
         }
 
         /// <summary>いまの曲の時刻（秒）。</summary>
@@ -686,14 +750,16 @@ namespace MmdWorld
 
         void ShowIdle()
         {
-            if (titleText != null)
-                titleText.text = SongCount() == 0 ? "曲がありません" : (_songIndex + 1) + "/" + SongCount() + "  " + songTitles[_songIndex];
+            string title = SongCount() == 0 ? "曲がありません" : (_songIndex + 1) + "/" + SongCount() + "  " + songTitles[_songIndex];
+            if (titleText != null) titleText.text = title;
+            if (tabletTitleText != null) tabletTitleText.text = title;
             if (!_playing && !_localPreview) SetStatus("停止中" + (SongCount() > 0 ? RangeLabel(_songIndex) : ""));
         }
 
         void SetStatus(string s)
         {
             if (statusText != null) statusText.text = s;
+            if (tabletStatusText != null) tabletStatusText.text = s;
         }
 
         int SongCount()

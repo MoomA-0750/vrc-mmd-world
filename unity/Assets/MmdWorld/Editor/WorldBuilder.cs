@@ -104,6 +104,7 @@ namespace MmdWorld.EditorTools
             var slotAvatars = BuildSlotAvatars(settings.slotAvatars, previewController);
 
             var (title, status) = BuildPanel(system);
+            var (tablet, tabletTitle, tabletStatus) = BuildTablet(system);
 
             system.songTitles = songs.Select(s => s.DisplayTitle).ToArray();
             system.songAudio = songs.Select(s => s.audio).ToArray();
@@ -123,6 +124,9 @@ namespace MmdWorld.EditorTools
             system.rotateStations = settings.rotateDancers;
             system.titleText = title;
             system.statusText = status;
+            system.tabletTitleText = tabletTitle;
+            system.tabletStatusText = tabletStatus;
+            system.tablet = tablet;
             UdonSharpEditorUtility.CopyProxyToUdon(system);
 
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -506,6 +510,112 @@ namespace MmdWorld.EditorTools
             }
             return (title, status);
         }
+
+        /// <summary>
+        /// 手元に浮かぶタブレット（DanceTablet）。VR では左手のグリップで出し、右手の指先で押す。デスクトップでは T キーで出し、キーで押す。
+        /// ボタンの前面を z = 0 に置き、自分の側を -Z にする（DanceTablet が指先の位置と比べる）。
+        /// </summary>
+        static (DanceTablet tablet, Text title, Text status) BuildTablet(DanceSystem system)
+        {
+            var rootGo = new GameObject("DanceTablet");
+            var body = new GameObject("Body");
+            body.transform.SetParent(rootGo.transform, false);
+
+            var board = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            board.name = "Board";
+            Object.DestroyImmediate(board.GetComponent<Collider>());
+            board.transform.SetParent(body.transform, false);
+            board.transform.localPosition = new Vector3(0f, 0f, 0.012f);
+            board.transform.localScale = new Vector3(0.38f, 0.32f, 0.008f);
+            board.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Board.mat", new Color(0.08f, 0.08f, 0.1f));
+
+            var title = CreateText(body.transform, "Title", "曲", 18, new Vector2(360, 26));
+            title.transform.localPosition = new Vector3(0f, 0.135f, -0.001f);
+            var status = CreateText(body.transform, "Status", "停止中", 13, new Vector2(360, 40));
+            status.transform.localPosition = new Vector3(0f, 0.1f, -0.001f);
+
+            var defs = new (string text, string evt, KeyCode key, int col, int row, int span, bool onTablet)[]
+            {
+                ("◀ 曲", "PrevSong", KeyCode.Alpha1, 0, 0, 1, false), ("▶ 再生", "Play", KeyCode.Alpha2, 1, 0, 1, false),
+                ("■ 停止", "Stop", KeyCode.Alpha3, 2, 0, 1, false), ("曲 ▶", "NextSong", KeyCode.Alpha4, 3, 0, 1, false),
+                ("≪ 区切り", "SeekBack", KeyCode.Alpha5, 0, 1, 1, false), ("区切り ≫", "SeekForward", KeyCode.Alpha6, 1, 1, 1, false),
+                ("プレビュー", "TogglePreview", KeyCode.Alpha7, 2, 1, 1, false), ("ループ", "ToggleLoop", KeyCode.Alpha8, 3, 1, 1, false),
+                ("開始 ◀", "RangeStartBack", KeyCode.Alpha9, 0, 2, 1, false), ("開始 ▶", "RangeStartForward", KeyCode.Alpha0, 1, 2, 1, false),
+                ("終了 ◀", "RangeEndBack", KeyCode.Minus, 2, 2, 1, false), ("終了 ▶", "RangeEndForward", KeyCode.Equals, 3, 2, 1, false),
+                ("踊る / やめる", "ToggleLocalJoin", KeyCode.J, 0, 3, 2, false), ("閉じる", "Hide", KeyCode.None, 3, 3, 1, true),
+            };
+            const float cellW = 0.086f, cellH = 0.052f, top = 0.045f;
+            var buttons = new List<DanceButton>();
+            var sizes = new List<Vector2>();
+            var keys = new List<KeyCode>();
+            var keyLabels = new List<GameObject>();
+            var tablet = UdonSharpUndo.AddComponent<DanceTablet>(rootGo);
+            foreach (var d in defs)
+            {
+                float w = cellW * d.span - 0.008f, h = cellH - 0.01f;
+                float x = -cellW * 1.5f + cellW * d.col + cellW * (d.span - 1) * 0.5f;
+                float y = top - cellH * d.row;
+                var button = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                button.name = "Button_" + d.evt;
+                button.transform.SetParent(body.transform, false);
+                // 前面を z = 0 に合わせる（厚み 8mm の中心は +4mm）
+                button.transform.localPosition = new Vector3(x, y, 0.004f);
+                button.transform.localScale = new Vector3(w, h, 0.008f);
+                button.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Button.mat", new Color(0.25f, 0.45f, 0.8f));
+                var db = UdonSharpUndo.AddComponent<DanceButton>(button);
+                db.target = d.onTablet ? (UdonSharpBehaviour)tablet : system;
+                db.eventName = d.evt;
+                UdonSharpEditorUtility.GetBackingUdonBehaviour(db).interactText = d.text;
+                UdonSharpEditorUtility.CopyProxyToUdon(db);
+                buttons.Add(db);
+                // DanceTablet は button.transform.localPosition を面の中心として使うので、z は 0 として扱う（厚みの分は判定の余裕になる）
+                sizes.Add(new Vector2(w, h));
+                keys.Add(d.key);
+
+                var label = CreateText(body.transform, "Label_" + d.evt, d.text, 12, new Vector2(w * 1000f, h * 1000f));
+                label.transform.localPosition = new Vector3(x, y, -0.001f);
+                if (d.key != KeyCode.None)
+                {
+                    var keyLabel = CreateText(body.transform, "Key_" + d.evt, "[" + KeyName(d.key) + "]", 8, new Vector2(w * 1000f, h * 1000f));
+                    keyLabel.alignment = TextAnchor.UpperLeft;
+                    keyLabel.color = new Color(1f, 0.85f, 0.3f);
+                    keyLabel.transform.localPosition = new Vector3(x + 0.003f, y - 0.002f, -0.0015f);
+                    keyLabels.Add(keyLabel.transform.parent.gameObject);
+                }
+            }
+
+            // 指先の目印（タブレットとは別に置く。DanceTablet が右手のコントローラーから割り出した位置へ動かす）
+            var pointer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            pointer.name = "DanceTabletPointer";
+            Object.DestroyImmediate(pointer.GetComponent<Collider>());
+            pointer.transform.localScale = Vector3.one * 0.012f;
+            pointer.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Pointer.mat", new Color(1f, 0.6f, 0.1f));
+
+            tablet.system = system;
+            tablet.body = body;
+            tablet.buttons = buttons.ToArray();
+            tablet.buttonSizes = sizes.ToArray();
+            tablet.desktopKeys = keys.ToArray();
+            tablet.desktopKeyLabels = keyLabels.ToArray();
+            tablet.pointer = pointer.transform;
+            UdonSharpEditorUtility.CopyProxyToUdon(tablet);
+
+            // プレイヤーの体とぶつからないように、ボタンも含めて Walkthrough レイヤーにする
+            int walkthrough = LayerMask.NameToLayer("Walkthrough");
+            if (walkthrough >= 0)
+            {
+                foreach (var t in rootGo.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = walkthrough;
+                pointer.layer = walkthrough;
+            }
+            return (tablet, title, status);
+        }
+
+        static string KeyName(KeyCode key) => key switch
+        {
+            KeyCode.Minus => "-",
+            KeyCode.Equals => "=",
+            _ => key.ToString().Replace("Alpha", ""),
+        };
 
         /// <summary>ワールド空間の Canvas に Text を1つ置く。1 ピクセル = 1mm。</summary>
         static Text CreateText(Transform parent, string name, string text, int fontSize, Vector2 size)

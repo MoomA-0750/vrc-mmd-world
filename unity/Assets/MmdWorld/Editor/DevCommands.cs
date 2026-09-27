@@ -18,7 +18,8 @@ namespace MmdWorld.EditorTools
     ///   PlayCheckDance    Play モードで枠に入って再生する確認
     ///   BuildAndTest      VRChat SDK の Build &amp; Test（VR ではなくデスクトップで1つ起動する）
     ///   BuildAndTestAuto [着替えるID] [戻すID] [features]
-    ///                     features を付けると、再生とシークの代わりに、プレビュー・範囲再生・ループ・途中からの参加を試す
+    ///                     features を付けると、再生とシークの代わりに、プレビュー・範囲再生・ループ・途中からの参加を試す。
+    ///                     tablet を付けると、手元のタブレットを出してそのボタンから操作する
     ///                     同上。クライアントを2つ起動し、先に入った方が12秒後に枠1に入って再生する（そのビルドだけ）。後の方は枠1の正面から見る。
     ///                     ID を渡すと、踊る前にそのアバターに着替え、終わったら戻す ID のアバターに着替え直す（自分がアップロードしたか公開のアバターだけ）
     ///   OpenManager       マネージャーのウィンドウを開く
@@ -67,7 +68,7 @@ namespace MmdWorld.EditorTools
                     case "BuildAndTestAuto":
                         // BuildAndTestAuto [着替えるアバターID] [戻すアバターID]
                         BuildAndTest(true, words.Length > 1 ? words[1] : "", words.Length > 2 ? words[2] : "",
-                            words.Length > 3 && words[3] == "features" ? 1 : 0);
+                            words.Length > 3 ? (words[3] == "features" ? 1 : words[3] == "tablet" ? 2 : 0) : 0);
                         break;
                     case "OpenManager":
                         MmdWorldManagerWindow.Open();

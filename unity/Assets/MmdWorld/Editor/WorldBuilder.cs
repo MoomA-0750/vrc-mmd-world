@@ -63,6 +63,7 @@ namespace MmdWorld.EditorTools
             EnsureProgramAsset<DanceSystem>();
             EnsureProgramAsset<DanceSlot>();
             EnsureProgramAsset<DanceButton>();
+            EnsureProgramAsset<DanceTablet>();
 
             var settings = MmdWorldSettings.LoadOrCreate();
             _slotCount = Mathf.Clamp(settings.slotCount, 1, 16);

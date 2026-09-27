@@ -504,9 +504,12 @@ namespace MmdWorld.EditorTools
                 station.stationExitPlayerLocation = root.transform;
                 stationList.Add(station);
                 // 誰が入った・出たかを DanceSystem に知らせる（座らせていないのに入ったら降ろす）
-                var events = UdonSharpUndo.AddComponent<DanceStation>(stationGo);
-                events.system = system;
-                UdonSharpEditorUtility.CopyProxyToUdon(events);
+                if (false)
+                {
+                    var events = UdonSharpUndo.AddComponent<DanceStation>(stationGo);
+                    events.system = system;
+                    UdonSharpEditorUtility.CopyProxyToUdon(events);
+                }
             }
 
             // ワールドのアバターを選ぶボタン（アバターが1体もいないワールドでは押しても何も起きない）

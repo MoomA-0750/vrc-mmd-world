@@ -104,7 +104,7 @@ namespace MmdWorld.EditorTools
         /// 曲を1つ足す。.vmd と音声（無くてもよい）を Songs/&lt;題名&gt;/ に写し、取り込んで DanceSong を作る。
         /// パスはプロジェクトの外（エクスプローラーからのドロップなど）でも、Assets の中でもよい。中のものも写す（元はそのまま残る）。
         /// </summary>
-        public static DanceSong AddSong(string vmdPath, string audioPath = null, string title = null, string facePath = null)
+        public static DanceSong AddSong(string vmdPath, string audioPath = null, string title = null, string facePath = null, IList<string> partPaths = null)
         {
             if (!IsVmdFile(vmdPath) || !File.Exists(vmdPath)) throw new ArgumentException(".vmd が見つかりません: " + vmdPath);
             var kind = Classify(vmdPath);
@@ -113,6 +113,8 @@ namespace MmdWorld.EditorTools
                                             (kind == VmdKind.Face ? "（踊りの .vmd と一緒にドロップするか、曲の「表情」に入れる）" : ""));
             if (!string.IsNullOrEmpty(facePath) && (!IsVmdFile(facePath) || !File.Exists(facePath)))
                 throw new ArgumentException("表情の .vmd が見つかりません: " + facePath);
+            foreach (var part in partPaths ?? new string[0])
+                if (!IsVmdFile(part) || !File.Exists(part)) throw new ArgumentException("パートの .vmd が見つかりません: " + part);
             if (!string.IsNullOrEmpty(audioPath) && (!IsAudioFile(audioPath) || !File.Exists(audioPath)))
                 throw new ArgumentException("音声ファイル（wav / mp3 / ogg）が見つかりません: " + audioPath);
 
@@ -135,6 +137,14 @@ namespace MmdWorld.EditorTools
                 if (faceAsset == vmdAsset) faceAsset = $"{dir}/表情_{Path.GetFileName(facePath)}";
                 File.Copy(facePath, faceAsset);
             }
+            var partAssets = new List<string>();
+            foreach (var part in partPaths ?? new string[0])
+            {
+                string asset = $"{dir}/{Path.GetFileName(part)}";
+                if (asset == vmdAsset || asset == faceAsset || partAssets.Contains(asset)) continue;
+                File.Copy(part, asset);
+                partAssets.Add(asset);
+            }
             AssetDatabase.Refresh();
 
             var song = ScriptableObject.CreateInstance<DanceSong>();
@@ -142,6 +152,7 @@ namespace MmdWorld.EditorTools
             song.motion = AssetDatabase.LoadAssetAtPath<AnimationClip>(vmdAsset);
             song.audio = audioAsset != null ? AssetDatabase.LoadAssetAtPath<AudioClip>(audioAsset) : null;
             song.face = faceAsset != null ? AssetDatabase.LoadAssetAtPath<AnimationClip>(faceAsset) : null;
+            song.parts = partAssets.Select(AssetDatabase.LoadAssetAtPath<AnimationClip>).Where(c => c != null).ToList();
             song.order = Songs().Select(s => s.order).DefaultIfEmpty(-1).Max() + 1;
             if (song.motion == null) throw new InvalidOperationException(".vmd を取り込めませんでした: " + vmdAsset);
             AssetDatabase.CreateAsset(song, $"{dir}/{SafeName(title)}.asset");
@@ -180,16 +191,34 @@ namespace MmdWorld.EditorTools
         }
 
         /// <summary>ステーション用の、その場で踊るクリップ（.vmd の取り込みで作られる）。無ければ元のクリップ。</summary>
-        public static AnimationClip InPlaceClip(DanceSong song)
+        /// <summary>曲のパート（1人目の motion と、2人目以降の parts）。1人で踊る曲なら motion だけ。</summary>
+        public static List<AnimationClip> Parts(DanceSong song)
         {
-            string path = AssetDatabase.GetAssetPath(song.motion);
-            var inPlace = AssetDatabase.LoadAllAssetsAtPath(path).OfType<AnimationClip>().FirstOrDefault(c => c != song.motion && c.name.EndsWith("（その場）"));
-            return inPlace != null ? inPlace : song.motion;
+            var list = new List<AnimationClip>();
+            if (song.motion != null) list.Add(song.motion);
+            if (song.parts != null) list.AddRange(song.parts.Where(p => p != null && p != song.motion));
+            return list;
+        }
+
+        /// <summary>パートの名前（.vmd のファイル名）。</summary>
+        public static string PartName(AnimationClip part) =>
+            part == null ? "" : Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(part));
+
+        /// <summary>ステーション用の、その場で踊るクリップ（.vmd の取り込みで作られる）。無ければ元のクリップ。</summary>
+        public static AnimationClip InPlaceClip(DanceSong song) => InPlaceClip(song.motion);
+
+        public static AnimationClip InPlaceClip(AnimationClip motion)
+        {
+            string path = AssetDatabase.GetAssetPath(motion);
+            var inPlace = AssetDatabase.LoadAllAssetsAtPath(path).OfType<AnimationClip>().FirstOrDefault(c => c != motion && c.name.EndsWith("（その場）"));
+            return inPlace != null ? inPlace : motion;
         }
 
         /// <summary>体の軌跡（.vmd の取り込みで作られる）。無ければ null。</summary>
-        public static MmdWorld.Vmd.VmdTrajectory Trajectory(DanceSong song) =>
-            AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(song.motion)).OfType<MmdWorld.Vmd.VmdTrajectory>().FirstOrDefault();
+        public static MmdWorld.Vmd.VmdTrajectory Trajectory(DanceSong song) => Trajectory(song.motion);
+
+        public static MmdWorld.Vmd.VmdTrajectory Trajectory(AnimationClip motion) =>
+            AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(motion)).OfType<MmdWorld.Vmd.VmdTrajectory>().FirstOrDefault();
 
         /// <summary>曲の区切りの時刻（秒、0 から昇順）。seekPoints があればそれ、無ければ seekStep ごと。曲の長さより前のものだけ。</summary>
         public static List<float> Segments(DanceSong song)

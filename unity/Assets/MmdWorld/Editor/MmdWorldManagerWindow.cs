@@ -84,6 +84,17 @@ namespace MmdWorld.EditorTools
                     EditorGUI.BeginChangeCheck();
                     var motion = (AnimationClip)EditorGUILayout.ObjectField("モーション", song.motion, typeof(AnimationClip), false);
                     var face = (AnimationClip)EditorGUILayout.ObjectField(new GUIContent("表情（別の .vmd）", "表情だけの .vmd が別になっているとき。モーションの表情をこれで上書きする"), song.face, typeof(AnimationClip), false);
+                    // 複数人のモーションの 2人目以降。最後の空欄に入れると増え、空にすると減る
+                    var parts = new List<AnimationClip>(song.parts ?? new List<AnimationClip>());
+                    bool partsChanged = false;
+                    for (int p = 0; p <= parts.Count; p++)
+                    {
+                        var current = p < parts.Count ? parts[p] : null;
+                        var picked = (AnimationClip)EditorGUILayout.ObjectField(new GUIContent($"{p + 2}人目のパート", "複数人のモーションのとき。枠1 がモーション、枠2 がここの1つ目 …と順に踊る。立ち位置は .vmd に入っている位置"), current, typeof(AnimationClip), false);
+                        if (picked == current) continue;
+                        partsChanged = true;
+                        if (p < parts.Count) parts[p] = picked; else parts.Add(picked);
+                    }
                     var audio = (AudioClip)EditorGUILayout.ObjectField("音声", song.audio, typeof(AudioClip), false);
                     float offset = EditorGUILayout.FloatField(new GUIContent("音のずれ（秒）", "音をモーションより何秒遅らせるか。音が早いときは +"), song.audioOffset);
                     float step = EditorGUILayout.FloatField(new GUIContent("区切りの間隔（秒）", "シーク・範囲再生・途中からの参加の区切り。細かいほどステーション用の Controller が増える。区切りの時刻を直接並べたいときは曲のアセットの seekPoints に入れる"), song.seekStep);
@@ -92,6 +103,7 @@ namespace MmdWorld.EditorTools
                         Undo.RecordObject(song, "曲の設定");
                         song.motion = motion;
                         song.face = face;
+                        if (partsChanged) song.parts = parts.Where(c => c != null).ToList();
                         song.audio = audio;
                         song.audioOffset = offset;
                         song.seekStep = Mathf.Max(2f, step);
@@ -136,8 +148,8 @@ namespace MmdWorld.EditorTools
             try
             {
                 var plan = PlanDropped(paths, MmdWorldLibrary.Classify);
-                foreach (var (vmd, audio, face) in plan.Songs)
-                    added.Add(MmdWorldLibrary.AddSong(vmd, audio, null, face).DisplayTitle);
+                foreach (var song in plan.Songs)
+                    added.Add(MmdWorldLibrary.AddSong(song.vmd, song.audio, song.title, song.face, song.parts).DisplayTitle + (song.parts.Count > 0 ? $"（{song.parts.Count + 1}人）" : ""));
                 string message = $"曲を {added.Count} つ足しました（{string.Join("、", added)}）。";
                 if (plan.Skipped.Count > 0) message += $"\n曲にしなかったもの: {string.Join("、", plan.Skipped)}。";
                 Show(message + "\n「ワールドを組み立て直す」でシーンに反映されます", added.Count > 0 ? MessageType.Info : MessageType.Warning);
@@ -148,17 +160,30 @@ namespace MmdWorld.EditorTools
             }
         }
 
+        public sealed class PlannedSong
+        {
+            public string title;
+            /// <summary>1人目（センター）のパート</summary>
+            public string vmd;
+            /// <summary>2人目以降のパート</summary>
+            public List<string> parts = new List<string>();
+            public string audio;
+            public string face;
+        }
+
         public sealed class DropPlan
         {
-            public readonly List<(string vmd, string audio, string face)> Songs = new List<(string, string, string)>();
+            public readonly List<PlannedSong> Songs = new List<PlannedSong>();
             /// <summary>曲にしなかったファイルと理由（カメラ・キー無し・組む相手の無い表情）</summary>
             public readonly List<string> Skipped = new List<string>();
         }
 
         /// <summary>
         /// ドロップされたファイルから、足す曲を決める。MMD の配布物をまとめて落としてもよいように:
-        /// - 踊りの .vmd ごとに1曲。表情だけの .vmd は踊りに重ねる（1つなら全部に、複数なら名前が近いものに）。カメラ・キー無しは飛ばす
-        /// - 音声は、1つなら全部の曲に、複数なら拡張子を除いた名前が同じものに付ける
+        /// - 踊りの .vmd は、名前の末尾（_center・_left・_right・_1・_A・左・右 など）だけが違うものを、複数人のモーションの1曲にまとめる（センターが1人目）。
+        ///   それ以外は .vmd ごとに1曲
+        /// - 表情だけの .vmd は踊りに重ねる（1つなら全部に、複数なら名前が近いものに）。カメラ・キー無しは飛ばす
+        /// - 音声は、1つなら全部の曲に、複数なら拡張子を除いた名前（パートの末尾を除いたもの）が同じものに付ける
         /// </summary>
         public static DropPlan PlanDropped(IEnumerable<string> paths, System.Func<string, MmdWorldLibrary.VmdKind> classify)
         {
@@ -175,15 +200,51 @@ namespace MmdWorld.EditorTools
                 else plan.Skipped.Add($"{Path.GetFileName(vmd)}（{MmdWorldLibrary.KindName(kind)}）");
             }
             string Name(string p) => Path.GetFileNameWithoutExtension(p);
-            foreach (var dance in dances)
+            // 名前の末尾のパートを除いた名前ごとにまとめる。並び順はセンター → 左 → 右 → そのほか（名前順）
+            foreach (var group in dances.GroupBy(d => PartBase(Name(d))))
             {
-                string audio = audios.Count == 1 ? audios[0] : audios.FirstOrDefault(a => Name(a) == Name(dance));
-                string face = faces.Count == 1 ? faces[0] : faces.OrderByDescending(f => CommonPrefix(Name(f), Name(dance))).FirstOrDefault();
-                plan.Songs.Add((dance, audio, face));
+                var members = group.OrderBy(d => PartOrder(Name(d))).ThenBy(Name).ToList();
+                // まとめたときの題名は、末尾を除いた名前。1人ならファイル名のまま
+                string title = members.Count > 1 ? group.Key : Name(members[0]);
+                string audio = audios.Count == 1 ? audios[0]
+                    : audios.FirstOrDefault(a => Name(a) == Name(members[0]) || Name(a) == group.Key);
+                string face = faces.Count == 1 ? faces[0] : faces.OrderByDescending(f => CommonPrefix(Name(f), Name(members[0]))).FirstOrDefault();
+                plan.Songs.Add(new PlannedSong { title = title, vmd = members[0], parts = members.Skip(1).ToList(), audio = audio, face = face });
             }
             if (dances.Count == 0)
                 foreach (var face in faces) plan.Skipped.Add($"{Path.GetFileName(face)}（表情だけのモーション。踊りの .vmd と一緒にドロップする）");
             return plan;
+        }
+
+        // 英数字の末尾（_center・-L・ 2 など）は区切り文字があるときだけ、日本語の末尾（センター・左・2人目 など）は区切り文字が無くてもパートとみなす
+        static readonly System.Text.RegularExpressions.Regex PartSuffix = new System.Text.RegularExpressions.Regex(
+            @"(?:[_\-\s]+(center|centre|left|right|[lrc]|\d{1,2}|[a-f])|[_\-\s]*(センター|中央|左|右|[0-9０-９]人目))$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        static string PartToken(string name)
+        {
+            var m = PartSuffix.Match(name);
+            if (!m.Success) return null;
+            return (m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value).ToLowerInvariant();
+        }
+
+        /// <summary>名前から、末尾のパート（_center・_left・_1・左 など）を除いたもの。末尾がパートでなければそのまま。</summary>
+        public static string PartBase(string name)
+        {
+            var m = PartSuffix.Match(name);
+            string rest = m.Success ? name.Substring(0, m.Index) : name;
+            return rest.Length > 0 ? rest : name;
+        }
+
+        /// <summary>パートの並び: センター・中央・1 → 左・2 → 右・3 → そのほか。</summary>
+        static int PartOrder(string name)
+        {
+            string p = PartToken(name);
+            if (p == null) return 0;
+            if (p == "center" || p == "centre" || p == "c" || p == "センター" || p == "中央" || p == "1" || p == "01" || p == "a" || p == "1人目" || p == "１人目") return 0;
+            if (p == "left" || p == "l" || p == "左" || p == "2" || p == "02" || p == "b" || p == "2人目" || p == "２人目") return 1;
+            if (p == "right" || p == "r" || p == "右" || p == "3" || p == "03" || p == "3人目" || p == "３人目") return 2;
+            return 3;
         }
 
         static int CommonPrefix(string a, string b)

@@ -247,6 +247,8 @@ namespace MmdWorld
             }
             if (pad != null)
                 pad.material.color = IsLocalDancer() ? mineColor : (taken ? takenColor : (_avatarIndex >= 0 ? avatarColor : freeColor));
+            // 手元のパネルの枠の列も合わせる
+            if (system != null) system.RefreshLists();
         }
     }
 }

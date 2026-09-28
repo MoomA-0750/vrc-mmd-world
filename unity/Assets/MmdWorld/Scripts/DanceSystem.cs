@@ -47,18 +47,21 @@ namespace MmdWorld
         [Tooltip("トラッキングを戻す Controller に座ってから降りるまでの秒数")]
         public float restoreSeconds = 0.5f;
 
-        [Header("選ぶページ（タブレットの「選ぶ」）")]
-        [Tooltip("曲の一覧のボタンの文字（1ページぶん）")]
-        public Text[] selectSongTexts;
-        [Tooltip("枠のボタンの文字（先頭から枠1、枠2 …）")]
-        public Text[] selectSlotTexts;
-        [Tooltip("アバターの一覧のボタンの文字。先頭は「なし」、残りが1ページぶん")]
-        public Text[] selectAvatarTexts;
+        [Header("手元のパネルの一覧（ワールドを組み立てるメニューが入れる）")]
+        [Tooltip("中央の上の、枠の列のボタンの文字（1ページぶん）。「空き」を押すとそこで踊る")]
+        public Text[] slotTexts;
+        [Tooltip("右の、曲の一覧の行の文字（1ページぶん）")]
+        public Text[] songRowTexts;
+        [Tooltip("左の、モデル（ワールドのアバター）の一覧の行の文字（1ページぶん）。押してから枠を押すと、その枠に置く")]
+        public Text[] modelRowTexts;
+        public Text songListHeader;
+        public Text modelListHeader;
         [Tooltip("DanceButton が押したボタンの番号を入れる")]
         public int pressedArgument;
-        public Color selectTextColor = Color.white;
-        public Color selectCurrentColor = new Color(1f, 0.8f, 0.3f);
-        public Color selectDisabledColor = new Color(0.55f, 0.55f, 0.6f);
+        public Color listTextColor = Color.white;
+        public Color listCurrentColor = new Color(1f, 0.8f, 0.3f);
+        public Color listAvatarColor = new Color(0.8f, 0.65f, 1f);
+        public Color listDisabledColor = new Color(0.55f, 0.55f, 0.6f);
 
         [Header("その場で踊る")]
         [Tooltip("「その場で踊る」の切り替えボタンの文字（今の状態を出す）")]
@@ -76,7 +79,7 @@ namespace MmdWorld
         [Tooltip("全曲ぶんをつなげた軌跡（床の上の位置）。目の高さを 1 とした値。向きはステーションのクリップに入っているので持たない")]
         public float[] trajX;
         public float[] trajZ;
-        [Tooltip("曲ごとの、軌跡の始まりの位置・数・1秒あたりのサンプル数")]
+        [Tooltip("トラック（曲 × パート）ごとの、軌跡の始まりの位置・数・1秒あたりのサンプル数")]
         public int[] trajStart;
         public int[] trajCount;
         public float[] trajRate;
@@ -84,7 +87,19 @@ namespace MmdWorld
         [Header("区切り（ワールドを組み立てるメニューが入れる）")]
         [Tooltip("全曲ぶんをつなげた、区切りの時刻（秒）と、その時刻から始まるステーション用の Controller")]
         public float[] segmentTimes;
+        [Tooltip("トラック（曲 × パート）× 区切りの Controller。トラック t の区切り k は segmentControllers[trackSegmentStart[t] + k]")]
         public RuntimeAnimatorController[] segmentControllers;
+        public int[] trackSegmentStart;
+
+        [Header("複数人のモーション（ワールドを組み立てるメニューが入れる）")]
+        [Tooltip("曲ごとの、最初のトラックの番号とパートの数。1人の曲はパート1つ")]
+        public int[] songPartStart;
+        public int[] songPartCount;
+        [Tooltip("トラックごとの名前（.vmd のファイル名）と長さ（秒）")]
+        public string[] trackNames;
+        public float[] trackLengths;
+        [Tooltip("複数人のモーションの立ち位置の原点（ステージの中央）。パートが2つ以上の曲では、全員この点からの位置で踊る")]
+        public Transform stageOrigin;
         [Tooltip("曲ごとの、区切りの始まりの位置と数")]
         public int[] segmentStart;
         public int[] segmentCount;
@@ -144,8 +159,10 @@ namespace MmdWorld
         /// <summary>自分が「その場で踊る」を選んでいるか（枠に入ったとき・切り替えたときに枠へ入れる）</summary>
         bool _preferInPlace;
         int _songPage;
-        int _avatarPage;
-        int _selectSlot;
+        int _modelPage;
+        int _slotPage;
+        /// <summary>左の一覧で選んだ、次に押した枠に置くワールドのアバター（-1 なら無し）</summary>
+        int _armedAvatar = -1;
         /// <summary>自動確認で入れる、スティックを倒したことにする入力</summary>
         Vector2 _autoMove;
 
@@ -257,8 +274,8 @@ namespace MmdWorld
         public void _AutoTestTabletPlay()
         {
             if (tablet == null) return;
-            tablet.Press(12); // 踊る / やめる
-            tablet.Press(1);  // 再生
+            tablet.PressByName("SlotButton", 0); // 枠1（空き）で踊る
+            tablet.PressByName("Play", -1);
             SendCustomEventDelayedSeconds(nameof(_AutoTestTabletInPlace), 8f);
             SendCustomEventDelayedSeconds(nameof(_AutoTestTabletInPlace), 18f);
             SendCustomEventDelayedSeconds(nameof(_AutoTestTabletSeek), 23f);
@@ -268,54 +285,53 @@ namespace MmdWorld
         /// <summary>「その場」を切り替える（8 秒でオン、18 秒でオフ。オンの間は席が動かないのを見る）</summary>
         public void _AutoTestTabletInPlace()
         {
-            if (tablet != null) tablet.Press(13); // その場
+            if (tablet != null) tablet.PressByName("ToggleInPlace", -1);
         }
 
         public void _AutoTestTabletSeek()
         {
-            if (tablet != null) tablet.Press(5); // 区切り ≫
+            if (tablet != null) tablet.PressByName("SeekForward", -1);
         }
 
         public void _AutoTestTabletStop()
         {
             if (tablet == null) return;
-            tablet.Press(2);  // 停止
+            tablet.PressByName("Stop", -1);
             // 範囲を狭めて、シークバーの帯と再生位置（止まっているときは開始点）が動くのを見る
-            tablet.Press(9);  // 開始 ▶
-            tablet.Press(9);
-            tablet.Press(10); // 終了 ◀
-            tablet.Press(10);
-            SendCustomEventDelayedSeconds(nameof(_AutoTestTabletSelect), 4f);
+            tablet.PressByName("RangeStartForward", -1);
+            tablet.PressByName("RangeStartForward", -1);
+            tablet.PressByName("RangeEndBack", -1);
+            tablet.PressByName("RangeEndBack", -1);
+            SendCustomEventDelayedSeconds(nameof(_AutoTestTabletLists), 4f);
             SendCustomEventDelayedSeconds(nameof(_AutoTestTabletClose), 12f);
         }
 
-        /// <summary>「選ぶ」のページを開き、枠2を選んでワールドのアバターの1体目を置き、曲の1番目を押して、戻る。</summary>
-        public void _AutoTestTabletSelect()
+        /// <summary>左の一覧でワールドのアバターの1体目を選んで枠2に置き、右の一覧で曲の1番目を選ぶ。</summary>
+        public void _AutoTestTabletLists()
         {
             if (tablet == null) return;
-            tablet.Press(14); // 選ぶ
-            tablet.Press(20); // 枠2
-            tablet.Press(21); // アバターの1体目（無ければ何も起きない）
-            tablet.Press(16); // 曲の1番目
-            SendCustomEventDelayedSeconds(nameof(_AutoTestTabletBack), 4f);
+            tablet.PressByName("ModelRowButton", 0);
+            tablet.PressByName("SlotButton", 1);
+            tablet.PressByName("SongRowButton", 0);
+            SendCustomEventDelayedSeconds(nameof(_AutoTestTabletLog), 3f);
         }
 
-        public void _AutoTestTabletBack()
+        /// <summary>一覧と枠の列に出ている文字をログに出し、枠1 で踊るのをやめる。</summary>
+        public void _AutoTestTabletLog()
         {
-            // 選ぶページに出ている文字をログに出す
-            string line = "[MmdWorld] 選ぶページ: 曲";
-            foreach (var t in selectSongTexts) line += " [" + (t != null ? t.text : "") + "]";
-            line += " / 枠";
-            foreach (var t in selectSlotTexts) line += " [" + (t != null ? t.text.Replace("\n", " ") : "") + "]";
-            line += " / アバター";
-            foreach (var t in selectAvatarTexts) line += " [" + (t != null ? t.text.Replace("\n", " ") : "") + "]";
+            string line = "[MmdWorld] パネルの一覧: 枠";
+            foreach (var t in slotTexts) line += " [" + (t != null ? t.text.Replace("\n", " ") : "") + "]";
+            line += " / 曲";
+            foreach (var t in songRowTexts) line += " [" + (t != null ? t.text : "") + "]";
+            line += " / モデル";
+            foreach (var t in modelRowTexts) line += " [" + (t != null ? t.text.Replace("\n", " ") : "") + "]";
             Debug.Log(line);
-            if (tablet != null) tablet.Press(32); // 戻る
+            if (tablet != null) tablet.PressByName("SlotButton", 0); // 枠1 をやめる
         }
 
         public void _AutoTestTabletClose()
         {
-            if (tablet != null) tablet.Press(15); // 閉じる
+            if (tablet != null) tablet.PressByName("Hide", -1);
         }
 
         public void _AutoTestRangePlay()
@@ -516,120 +532,144 @@ namespace MmdWorld
             }
         }
 
-        // ---- 選ぶページ ----
+        // ---- 手元のパネルの一覧（枠の列・左のモデル・右の曲） ----
 
-        int SongsPerPage()
+        int PerPage(Text[] rows)
         {
-            return selectSongTexts == null ? 0 : selectSongTexts.Length;
+            return rows == null ? 0 : Mathf.Max(1, rows.Length);
         }
 
-        int AvatarsPerPage()
+        int Pages(int count, Text[] rows)
         {
-            return selectAvatarTexts == null ? 0 : selectAvatarTexts.Length - 1;
+            int per = PerPage(rows);
+            return Mathf.Max(1, (count + per - 1) / per);
         }
 
-        /// <summary>曲の一覧の pressedArgument 番目を選ぶ（再生中は変えない）。</summary>
-        public void SelectSongButton()
+        /// <summary>
+        /// 枠の列の pressedArgument 番目を押した。左の一覧でアバターを選んでいれば、そこに置く。
+        /// そうでなければ、空きなら自分がそこで踊り、自分の枠ならやめ、ワールドのアバターの枠ならアバターを外す。
+        /// </summary>
+        public void SlotButton()
         {
-            int index = _songPage * SongsPerPage() + pressedArgument;
-            Debug.Log("[MmdWorld] 選ぶ: 曲 " + index);
-            if (_playing || index < 0 || index >= SongCount() || index == _songIndex) return;
+            int index = _slotPage * PerPage(slotTexts) + pressedArgument;
+            if (pressedArgument < 0 || index >= slots.Length || slots[index] == null) return;
+            var slot = slots[index];
+            if (_armedAvatar >= 0)
+            {
+                if (!slot.HasDancer())
+                {
+                    Debug.Log("[MmdWorld] パネル: 枠" + (index + 1) + " に " + SlotAvatarName(_armedAvatar) + " を置く");
+                    slot.SetAvatar(_armedAvatar);
+                }
+                _armedAvatar = -1;
+            }
+            else if (slot.IsLocalDancer())
+            {
+                Debug.Log("[MmdWorld] パネル: 枠" + (index + 1) + " で踊るのをやめる");
+                slot.ReleaseIfLocal();
+                LeaveLocalStation();
+            }
+            else if (slot.GetAvatarIndex() >= 0)
+            {
+                Debug.Log("[MmdWorld] パネル: 枠" + (index + 1) + " のアバターを外す");
+                slot.SetAvatar(-1);
+            }
+            else if (!slot.HasDancer())
+            {
+                Debug.Log("[MmdWorld] パネル: 枠" + (index + 1) + " で踊る");
+                slot.ClaimForLocal();
+            }
+            RefreshLists();
+        }
+
+        public void SlotPageNext() { _slotPage = (_slotPage + 1) % Pages(slots.Length, slotTexts); RefreshLists(); }
+        public void SlotPagePrev() { int n = Pages(slots.Length, slotTexts); _slotPage = (_slotPage + n - 1) % n; RefreshLists(); }
+
+        /// <summary>右の曲の一覧の pressedArgument 行目を選ぶ（再生中は変えない）。</summary>
+        public void SongRowButton()
+        {
+            int index = _songPage * PerPage(songRowTexts) + pressedArgument;
+            Debug.Log("[MmdWorld] パネル: 曲 " + index);
+            if (_playing || pressedArgument < 0 || index >= SongCount() || index == _songIndex) return;
             TakeOwnership();
             _songIndex = index;
             ResetRange();
             Commit();
         }
 
-        public void SongPageNext() { MoveSongPage(1); }
-        public void SongPagePrev() { MoveSongPage(-1); }
+        public void SongPageNext() { _songPage = (_songPage + 1) % Pages(SongCount(), songRowTexts); RefreshLists(); }
+        public void SongPagePrev() { int n = Pages(SongCount(), songRowTexts); _songPage = (_songPage + n - 1) % n; RefreshLists(); }
 
-        void MoveSongPage(int step)
+        /// <summary>左のモデルの一覧の pressedArgument 行目を選ぶ（次に押した枠に置く）。同じものをもう一度押すと選ぶのをやめる。</summary>
+        public void ModelRowButton()
         {
-            int per = Mathf.Max(1, SongsPerPage());
-            int pages = Mathf.Max(1, (SongCount() + per - 1) / per);
-            _songPage = (_songPage + step + pages) % pages;
-            RefreshSelectPage();
+            int index = _modelPage * PerPage(modelRowTexts) + pressedArgument;
+            if (pressedArgument < 0 || index >= SlotAvatarCount()) return;
+            _armedAvatar = _armedAvatar == index ? -1 : index;
+            Debug.Log("[MmdWorld] パネル: 置くアバター " + (_armedAvatar >= 0 ? SlotAvatarName(_armedAvatar) : "なし"));
+            RefreshLists();
         }
 
-        /// <summary>アバターを置く枠を pressedArgument 番目にする。</summary>
-        public void SelectSlotButton()
-        {
-            if (pressedArgument < 0 || pressedArgument >= slots.Length) return;
-            _selectSlot = pressedArgument;
-            Debug.Log("[MmdWorld] 選ぶ: 枠" + (_selectSlot + 1));
-            RefreshSelectPage();
-        }
+        public void ModelPageNext() { _modelPage = (_modelPage + 1) % Pages(SlotAvatarCount(), modelRowTexts); RefreshLists(); }
+        public void ModelPagePrev() { int n = Pages(SlotAvatarCount(), modelRowTexts); _modelPage = (_modelPage + n - 1) % n; RefreshLists(); }
 
-        /// <summary>選んでいる枠に、アバターの一覧の pressedArgument 番目を置く（0 は「なし」）。</summary>
-        public void SelectAvatarButton()
+        /// <summary>一覧と枠の列の文字を、今の曲・枠・アバターに合わせる。今のもの・選んでいるものは黄色、置けないものは灰色。</summary>
+        public void RefreshLists()
         {
-            if (_selectSlot < 0 || _selectSlot >= slots.Length || slots[_selectSlot] == null) return;
-            int index = pressedArgument == 0 ? -1 : _avatarPage * AvatarsPerPage() + pressedArgument - 1;
-            if (index >= SlotAvatarCount()) return;
-            Debug.Log("[MmdWorld] 選ぶ: 枠" + (_selectSlot + 1) + " のアバター " + (index < 0 ? "なし" : SlotAvatarName(index)));
-            slots[_selectSlot].SetAvatar(index);
-            RefreshSelectPage();
-        }
-
-        public void AvatarPageNext() { MoveAvatarPage(1); }
-        public void AvatarPagePrev() { MoveAvatarPage(-1); }
-
-        void MoveAvatarPage(int step)
-        {
-            int per = Mathf.Max(1, AvatarsPerPage());
-            int pages = Mathf.Max(1, (SlotAvatarCount() + per - 1) / per);
-            _avatarPage = (_avatarPage + step + pages) % pages;
-            RefreshSelectPage();
-        }
-
-        /// <summary>選ぶページの文字を、今の曲・枠・アバターに合わせる。今のものは黄色、選べないものは灰色。</summary>
-        public void RefreshSelectPage()
-        {
-            if (selectSongTexts != null)
-                for (int i = 0; i < selectSongTexts.Length; i++)
+            if (slotTexts != null)
+                for (int i = 0; i < slotTexts.Length; i++)
                 {
-                    var text = selectSongTexts[i];
+                    var text = slotTexts[i];
                     if (text == null) continue;
-                    int index = _songPage * SongsPerPage() + i;
-                    bool has = index < SongCount();
-                    text.text = has ? (index == _songIndex ? "▶ " : "") + songTitles[index] : "";
-                    text.color = index == _songIndex ? selectCurrentColor : (_playing ? selectDisabledColor : selectTextColor);
-                }
-            if (selectSlotTexts != null)
-                for (int i = 0; i < selectSlotTexts.Length; i++)
-                {
-                    var text = selectSlotTexts[i];
-                    if (text == null) continue;
-                    bool has = i < slots.Length && slots[i] != null;
-                    text.text = has ? "枠" + (i + 1) + "\n" + slots[i].Describe() : "";
-                    text.color = i == _selectSlot ? selectCurrentColor : selectTextColor;
-                }
-            if (selectAvatarTexts != null)
-            {
-                var slot = _selectSlot < slots.Length ? slots[_selectSlot] : null;
-                bool person = slot != null && slot.HasDancer();
-                int current = slot != null ? slot.GetAvatarIndex() : -1;
-                for (int i = 0; i < selectAvatarTexts.Length; i++)
-                {
-                    var text = selectAvatarTexts[i];
-                    if (text == null) continue;
-                    if (i == 0)
+                    int index = _slotPage * PerPage(slotTexts) + i;
+                    if (index >= slots.Length || slots[index] == null)
                     {
-                        text.text = person ? "人が踊る枠" : "なし";
-                        text.color = person ? selectDisabledColor : (current < 0 ? selectCurrentColor : selectTextColor);
+                        text.text = "";
                         continue;
                     }
-                    int index = _avatarPage * AvatarsPerPage() + i - 1;
+                    var slot = slots[index];
+                    string part = SongCount() > 0 ? PartNameFor(_songIndex, index) : "";
+                    text.text = "枠" + (index + 1) + "\n" + slot.Describe() + (part != "" ? "\n" + part : "");
+                    text.color = slot.IsLocalDancer() ? listCurrentColor
+                        : slot.GetAvatarIndex() >= 0 ? listAvatarColor
+                        : slot.HasDancer() ? listDisabledColor : listTextColor;
+                }
+            if (songRowTexts != null)
+            {
+                for (int i = 0; i < songRowTexts.Length; i++)
+                {
+                    var text = songRowTexts[i];
+                    if (text == null) continue;
+                    int index = _songPage * PerPage(songRowTexts) + i;
+                    if (index >= SongCount())
+                    {
+                        text.text = "";
+                        continue;
+                    }
+                    int parts = songPartCount != null && index < songPartCount.Length ? songPartCount[index] : 1;
+                    text.text = (index == _songIndex ? "▶ " : "") + songTitles[index] + (parts > 1 ? "（" + parts + "人）" : "");
+                    text.color = index == _songIndex ? listCurrentColor : (_playing ? listDisabledColor : listTextColor);
+                }
+                if (songListHeader != null) songListHeader.text = "曲 " + (_songPage + 1) + "/" + Pages(SongCount(), songRowTexts);
+            }
+            if (modelRowTexts != null)
+            {
+                for (int i = 0; i < modelRowTexts.Length; i++)
+                {
+                    var text = modelRowTexts[i];
+                    if (text == null) continue;
+                    int index = _modelPage * PerPage(modelRowTexts) + i;
                     if (index >= SlotAvatarCount())
                     {
-                        text.text = i == 1 && SlotAvatarCount() == 0 ? "（ワールドに\nアバター無し）" : "";
-                        text.color = selectDisabledColor;
+                        text.text = i == 0 && SlotAvatarCount() == 0 ? "（ワールドに\nアバター無し）" : "";
+                        text.color = listDisabledColor;
                         continue;
                     }
                     text.text = SlotAvatarName(index);
-                    bool usedElsewhere = IsSlotAvatarUsed(index, slot);
-                    text.color = index == current ? selectCurrentColor : (person || usedElsewhere ? selectDisabledColor : selectTextColor);
+                    text.color = index == _armedAvatar ? listCurrentColor : (IsSlotAvatarUsed(index, null) ? listDisabledColor : listTextColor);
                 }
+                if (modelListHeader != null)
+                    modelListHeader.text = _armedAvatar >= 0 ? "置く枠を押す" : "モデル " + (_modelPage + 1) + "/" + Pages(SlotAvatarCount(), modelRowTexts);
             }
         }
 
@@ -765,11 +805,12 @@ namespace MmdWorld
             if (k == _currentSegment) return;
             _currentSegment = k;
             if (k < 0) return;
-            var controller = segmentControllers[segmentStart[song] + k];
-            // 両方のステーションに入れる（座っている人の踊りは、座り直すまで変わらない）
-            foreach (var slot in slots)
+            // 枠ごとに、その枠が踊るパートの Controller を両方のステーションに入れる（座っている人の踊りは、座り直すまで変わらない）
+            for (int s = 0; s < slots.Length; s++)
             {
+                var slot = slots[s];
                 if (slot == null) continue;
+                var controller = segmentControllers[trackSegmentStart[TrackFor(song, s)] + k];
                 for (int i = 0; i < slot.StationCount(); i++)
                 {
                     var station = slot.GetStation(i);
@@ -865,9 +906,15 @@ namespace MmdWorld
         {
             if (_previewStarted) return;
             _previewStarted = true;
-            float normalized = length > 0f ? Mathf.Clamp01(t / length) : 0f;
-            foreach (var dancer in previewDancers)
-                if (dancer != null) dancer.Play("Song" + song, 0, normalized);
+            // お手本は、先頭から順にパートを踊る（複数人のモーションなら、お手本の並びで隊形が分かる）
+            for (int i = 0; i < previewDancers.Length; i++)
+            {
+                var dancer = previewDancers[i];
+                if (dancer == null) continue;
+                int track = TrackFor(song, i);
+                float trackLength = trackLengths != null && track < trackLengths.Length ? trackLengths[track] : length;
+                dancer.Play("Track" + track, 0, trackLength > 0f ? Mathf.Clamp01(t / trackLength) : 0f);
+            }
             PlaySlotAvatars();
         }
 
@@ -955,30 +1002,66 @@ namespace MmdWorld
         /// </summary>
         void MoveStations(int song, float t)
         {
-            float x = 0f, z = 0f;
-            if (trajCount != null && song < trajCount.Length && trajCount[song] >= 2)
+            bool formation = IsFormation(song);
+            for (int s = 0; s < slots.Length; s++)
             {
-                float f = Mathf.Clamp(t * trajRate[song], 0f, trajCount[song] - 1.001f);
-                int i = Mathf.FloorToInt(f);
-                float a = f - i;
-                int k = trajStart[song] + i;
-                x = Mathf.Lerp(trajX[k], trajX[k + 1], a);
-                z = Mathf.Lerp(trajZ[k], trajZ[k + 1], a);
-            }
-            foreach (var slot in slots)
-            {
+                var slot = slots[s];
                 if (slot == null) continue;
                 var dancer = slot.GetDancer();
                 var station = slot.GetStationRoot();
                 if (dancer == null || station == null) continue;
-                // 軌跡は目の高さを 1 とした値なので、踊っている人のアバターの目の高さを掛ける
+                // 軌跡は目の高さを 1 とした値なので、踊っている人のアバターの目の高さを掛ける。「その場で踊る」なら軌跡では動かさない
                 float eye = dancer.GetAvatarEyeHeightAsMeters();
-                // 踊っている人がスティック・WASD で動かした分を足す。「その場で踊る」なら軌跡では動かさない
-                var along = slot.IsInPlace() ? Vector3.zero : new Vector3(x * eye, 0f, z * eye);
+                var along = slot.IsInPlace() ? Vector3.zero : TrajectoryAt(TrackFor(song, s), t) * eye;
+                // 複数人のモーションは、ステージの中央からの位置（パートに入っている立ち位置）で踊る。1人の曲は枠の位置から
+                if (formation && !slot.IsInPlace() && stageOrigin != null && station.parent != null)
+                    along = station.parent.InverseTransformPoint(stageOrigin.TransformPoint(along));
+                // 踊っている人がスティック・WASD で動かした分を足す
                 station.transform.localPosition = along + slot.GetDrive();
                 // 向きはステーションのクリップに入っているので回さない（回すと VR では視点も回る）
                 station.transform.localRotation = Quaternion.identity;
             }
+        }
+
+        /// <summary>トラックの時刻 t の、床の上の位置（目の高さを 1 とした値、ステーションの親の向きで）。</summary>
+        Vector3 TrajectoryAt(int track, float t)
+        {
+            if (trajCount == null || track < 0 || track >= trajCount.Length || trajCount[track] < 2) return Vector3.zero;
+            float f = Mathf.Clamp(t * trajRate[track], 0f, trajCount[track] - 1.001f);
+            int i = Mathf.FloorToInt(f);
+            float a = f - i;
+            int k = trajStart[track] + i;
+            return new Vector3(Mathf.Lerp(trajX[k], trajX[k + 1], a), 0f, Mathf.Lerp(trajZ[k], trajZ[k + 1], a));
+        }
+
+        /// <summary>複数人のモーション（パートが2つ以上）の曲か。</summary>
+        public bool IsFormation(int song)
+        {
+            return songPartCount != null && song >= 0 && song < songPartCount.Length && songPartCount[song] > 1;
+        }
+
+        /// <summary>枠（先頭から 0, 1, 2 …）が踊るトラック。枠の順にパートを割り当て、パートより枠が多ければ先頭から繰り返す。</summary>
+        public int TrackFor(int song, int slotIndex)
+        {
+            if (songPartStart == null || song < 0 || song >= songPartStart.Length) return 0;
+            int count = Mathf.Max(1, songPartCount[song]);
+            return songPartStart[song] + slotIndex % count;
+        }
+
+        /// <summary>枠が踊るパートの名前（1人の曲なら空）。</summary>
+        public string PartNameFor(int song, int slotIndex)
+        {
+            if (!IsFormation(song) || trackNames == null) return "";
+            int track = TrackFor(song, slotIndex);
+            return track < trackNames.Length ? trackNames[track] : "";
+        }
+
+        int SlotIndexOf(DanceSlot target)
+        {
+            for (int i = 0; i < slots.Length; i++)
+                if (slots[i] == target) return i;
+            return 0;
+        }
         }
 
         /// <summary>
@@ -1101,27 +1184,43 @@ namespace MmdWorld
                 if (avatar.gameObject.activeSelf != show) avatar.gameObject.SetActive(show);
             }
             PlaySlotAvatars();
-            RefreshSelectPage();
+            RefreshLists();
         }
 
         /// <summary>出ているアバターを、再生中なら今の曲の今の時刻から、止まっていれば Idle にする。</summary>
+        /// <summary>
+        /// 枠に置いたワールドのアバターを、その枠が踊るパートで踊らせる。止まっているときは Idle（1曲目の最初の姿勢）で枠に立たせる。
+        /// 複数人のモーションでは、アバターをステージの中央に置く（クリップに入っている立ち位置で踊るので）。
+        /// </summary>
         void PlaySlotAvatars()
         {
             if (SlotAvatarCount() == 0) return;
-            string state = "Idle";
-            float normalized = 0f;
+            bool playing = false;
+            double t = 0;
             if (_playing && _songIndex >= 0 && _songIndex < SongCount())
             {
-                double t = CurrentTime();
-                float length = songLengths[_songIndex];
-                if (t >= 0 && t <= length && length > 0f)
-                {
-                    state = "Song" + _songIndex;
-                    normalized = Mathf.Clamp01((float)(t / length));
-                }
+                t = CurrentTime();
+                playing = t >= 0 && t <= songLengths[_songIndex];
             }
-            foreach (var avatar in slotAvatars)
-                if (avatar != null && avatar.gameObject.activeInHierarchy) avatar.Play(state, 0, normalized);
+            for (int s = 0; s < slots.Length; s++)
+            {
+                var slot = slots[s];
+                if (slot == null) continue;
+                int index = slot.GetAvatarIndex();
+                if (index < 0 || index >= SlotAvatarCount() || slotAvatars[index] == null) continue;
+                var avatar = slotAvatars[index];
+                if (!avatar.gameObject.activeInHierarchy) continue;
+                var anchor = playing && IsFormation(_songIndex) && stageOrigin != null ? stageOrigin : slot.transform.parent;
+                avatar.transform.SetPositionAndRotation(anchor.position, anchor.rotation);
+                if (!playing)
+                {
+                    avatar.Play("Idle", 0, 0f);
+                    continue;
+                }
+                int track = TrackFor(_songIndex, s);
+                float length = trackLengths != null && track < trackLengths.Length ? trackLengths[track] : songLengths[_songIndex];
+                avatar.Play("Track" + track, 0, length > 0f ? Mathf.Clamp01((float)(t / length)) : 0f);
+            }
         }
 
         // ---- 表示 ----
@@ -1135,7 +1234,7 @@ namespace MmdWorld
             if (tabletTitleText != null) tabletTitleText.text = title;
             if (!_playing && !_localPreview) SetStatus("停止中" + (SongCount() > 0 ? RangeLabel(_songIndex) : ""));
             RefreshSeekBars();
-            RefreshSelectPage();
+            RefreshLists();
         }
 
         /// <summary>バーに曲の長さ・区切り・範囲を入れ直す。止まっているときは再生位置を範囲の開始点に置く。</summary>

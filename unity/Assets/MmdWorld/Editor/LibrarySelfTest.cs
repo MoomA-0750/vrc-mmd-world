@@ -64,6 +64,11 @@ namespace MmdWorld.EditorTools
             string wav = Path.Combine(temp, "selftest.wav");
             File.Copy(SourceVmd, vmd, true);
             File.Copy(SourceAudio, wav, true);
+            // 複数人のモーションのパートの代わり（同じ踊りを写したもの）
+            string vmdLeft = Path.Combine(temp, "selftest_left.vmd");
+            string vmdRight = Path.Combine(temp, "selftest_right.vmd");
+            File.Copy(SourceVmd, vmdLeft, true);
+            File.Copy(SourceVmd, vmdRight, true);
 
             // 表情だけ・カメラだけの .vmd（MMD の配布物によく一緒に入っている）
             string faceVmd = Path.Combine(temp, "selftest_face.vmd");
@@ -81,6 +86,11 @@ namespace MmdWorld.EditorTools
             var bundle = MmdWorldManagerWindow.PlanDropped(new[] { "a/center.vmd", "a/left.vmd", "a/face.vmd", "a/camera.vmd", "a/song.wav" }, Fake);
             Check(bundle.Songs.Count == 2 && bundle.Songs.All(t => t.audio == "a/song.wav" && t.face == "a/face.vmd") && bundle.Skipped.Count == 1,
                   "配布物をまとめて落とすと、踊りごとに曲になり、音声と表情は全部に付き、カメラは飛ばす");
+            var multi = MmdWorldManagerWindow.PlanDropped(new[] { "a/m_right.vmd", "a/m_center.vmd", "a/m_left.vmd", "a/other.vmd", "a/song1.vmd", "a/song2.vmd", "a/song.wav" }, Fake);
+            var m = multi.Songs.FirstOrDefault(t => t.title == "m");
+            Check(m != null && m.vmd == "a/m_center.vmd" && m.parts.SequenceEqual(new[] { "a/m_left.vmd", "a/m_right.vmd" })
+                  && multi.Songs.Count(t => t.title != "m") == 3,
+                  "名前の末尾だけが違う .vmd は、センター・左・右の順のパートで1曲にまとまる（区切り文字の無い song1・song2 は別の曲）");
             var named = MmdWorldManagerWindow.PlanDropped(new[] { "a/x.vmd", "a/y.vmd", "a/y.ogg", "a/z.wav" }, Fake);
             Check(named.Songs.Count == 2 && named.Songs[0].audio == null && named.Songs[1].audio == "a/y.ogg", "音声が複数なら同じ名前どうしが組になる");
             var faceOnly = MmdWorldManagerWindow.PlanDropped(new[] { "a/face.vmd" }, Fake);
@@ -99,7 +109,7 @@ namespace MmdWorld.EditorTools
             string songPath = null;
             try
             {
-                song = MmdWorldLibrary.AddSong(vmd, wav, "自己テスト/曲:1", faceVmd);
+                song = MmdWorldLibrary.AddSong(vmd, wav, "自己テスト/曲:1", faceVmd, new[] { vmdLeft, vmdRight });
                 // シーンを作り直すと、使われていないアセットは外されて参照が切れるので、パスで持っておく
                 songPath = AssetDatabase.GetAssetPath(song);
                 string dir = Path.GetDirectoryName(AssetDatabase.GetAssetPath(song)).Replace('\\', '/');
@@ -108,6 +118,7 @@ namespace MmdWorld.EditorTools
                 Check(song.motion != null && song.motion.humanMotion, "モーションが Humanoid として取り込まれる");
                 Check(song.audio != null && song.audio.length > 90f, "音声が入る");
                 Check(song.face != null, "表情の .vmd が曲の表情に入る");
+                Check(song.parts.Count == 2 && MmdWorldLibrary.Parts(song).Count == 3, "複数人のモーションは2人目以降がパートに入る");
                 Check(song.title == "自己テスト/曲:1", "題名はそのまま残る");
                 Check(MmdWorldLibrary.Songs().Last() == song, "新しい曲は最後に並ぶ");
 
@@ -137,7 +148,10 @@ namespace MmdWorld.EditorTools
                     // 足した曲のステーションのクリップに、表情の .vmd の「あ」（30 フレームで 0.77。ブレンドシェイプの重みは 0〜100 なので 77）が重なっている
                     var sys = UnityEngine.Object.FindObjectsOfType<DanceSystem>(true).First();
                     int index = Array.IndexOf(sys.songTitles, "自己テスト/曲:1");
-                    var controller = index >= 0 ? sys.segmentControllers[sys.segmentStart[index]] as UnityEditor.Animations.AnimatorController : null;
+                    var controller = index >= 0 ? sys.segmentControllers[sys.trackSegmentStart[sys.songPartStart[index]]] as UnityEditor.Animations.AnimatorController : null;
+                    Check(index >= 0 && sys.songPartCount[index] == 3 && sys.trackNames[sys.songPartStart[index] + 1] == "selftest_left" && sys.stageOrigin != null,
+                          "複数人の曲はパートの数だけトラックがあり、立ち位置の原点がある");
+                    Check(index >= 0 && sys.TrackFor(index, 4) == sys.songPartStart[index] + 1, "枠5 は 2人目のパートを踊る（枠の順に割り当てて繰り返す）");
                     var clip = controller != null ? controller.layers[0].stateMachine.defaultState.motion as AnimationClip : null;
                     var binding = clip != null ? AnimationUtility.GetCurveBindings(clip).FirstOrDefault(b => b.propertyName == "blendShape.あ") : default;
                     var curve = clip != null && binding.propertyName != null ? AnimationUtility.GetEditorCurve(clip, binding) : null;
@@ -149,17 +163,18 @@ namespace MmdWorld.EditorTools
                 var pedestals = UnityEngine.Object.FindObjectsOfType<VRCAvatarPedestal>(true);
                 Check(pedestals.Length == 1 && pedestals[0].blueprintId == TestAvatarId, "形の正しい ID の台だけが1つ置かれる");
                 var system = UnityEngine.Object.FindObjectsOfType<DanceSystem>(true).First();
-                int segTotal = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
-                Check(system.segmentControllers.Length == segTotal && system.segmentControllers.All(c => c != null), $"区切りの数だけ Controller がある: {system.segmentControllers.Length}");
-                Check(system.segmentCount.Length == songCount && system.segmentTimes.Length == segTotal && system.segmentTimes[system.segmentStart.Last()] == 0f, "区切りの表が曲ごとに 0 秒から並ぶ");
+                int segTotal = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count * MmdWorldLibrary.Parts(sg).Count);
+                Check(system.segmentControllers.Length == segTotal && system.segmentControllers.All(c => c != null), $"区切り × パートの数だけ Controller がある: {system.segmentControllers.Length}");
+                int timesTotal = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
+                Check(system.segmentCount.Length == songCount && system.segmentTimes.Length == timesTotal && system.segmentTimes[system.segmentStart.Last()] == 0f, "区切りの表が曲ごとに 0 秒から並ぶ");
                 Check(Mathf.Approximately(system.countdownSeconds, 5f), "カウントダウンの秒数が入る");
                 Check(system.songTitles.Contains("自己テスト/曲:1"), "足した曲がパネルの曲に入る");
                 int expectedSlotAvatars = local != null ? 2 : 1;
                 Check(system.slotAvatars.Length == expectedSlotAvatars && system.slotAvatarNames.Length == expectedSlotAvatars, "枠で踊らせるアバターが置かれる（重複は1体）: " + system.slotAvatars.Length);
                 Check(system.slotAvatars.All(a => a != null && !a.gameObject.activeSelf && a.runtimeAnimatorController != null), "枠のアバターは最初は隠れていて、踊りの Animator が付いている");
-                Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSystem.SelectAvatarButton)) == 4
-                      && system.selectAvatarTexts.Length == 4 && system.selectSlotTexts.Length == 4 && system.selectSongTexts.Length == 4,
-                      "タブレットの「選ぶ」のページに、曲・枠・アバター（なし＋3体）のボタンがある");
+                Check(system.slotTexts.Length == 4 && system.songRowTexts.Length == 7 && system.modelRowTexts.Length == 7
+                      && UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSystem.SlotButton)) == 4,
+                      "タブレットに、枠の列（4つ）と左右の一覧（7行ずつ）がある");
                 Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).All(b => b.eventName != nameof(DanceSlot.NextAvatar)), "枠ごとの、アバターを順に切り替えるボタンは無い");
                 if (local != null)
                 {

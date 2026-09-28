@@ -35,10 +35,6 @@ namespace MmdWorld
         public string[] desktopKeys;
         [Tooltip("ボタンのキーの表示（デスクトップのときだけ出す）")]
         public GameObject[] desktopKeyLabels;
-        [Tooltip("ふだんのページ（再生・シークなどのボタン）")]
-        public GameObject mainPage;
-        [Tooltip("「選ぶ」のページ（曲・枠・ワールドのアバター）。見えていないページのボタンは押せない")]
-        public GameObject selectPage;
         [Tooltip("VR で指先を示す小さな球")]
         public Transform pointer;
         public string desktopToggleKey = "t";
@@ -55,7 +51,7 @@ namespace MmdWorld
         [Tooltip("スティック・WASD をこれより倒したら消す")]
         public float hideOnMove = 0.5f;
         [Tooltip("デスクトップ: 頭からどこに置くか（視点についてくる）")]
-        public Vector3 desktopOffset = new Vector3(0f, -0.14f, 0.8f);
+        public Vector3 desktopOffset = new Vector3(0f, -0.1f, 1.0f);
         [Tooltip("右手のコントローラーから指先までのずれ（コントローラーの向きのローカル座標、メートル）")]
         public Vector3 fingerOffset = new Vector3(0f, -0.02f, 0.07f);
 
@@ -157,27 +153,8 @@ namespace MmdWorld
         public void Hide()
         {
             SetVisible(false);
-            ShowPage(false);
         }
 
-        /// <summary>ふだんのページと「選ぶ」のページを切り替える。</summary>
-        public void ToggleSelectPage()
-        {
-            ShowPage(selectPage != null && !selectPage.activeSelf);
-        }
-
-        void ShowPage(bool select)
-        {
-            if (selectPage != null) selectPage.SetActive(select);
-            if (mainPage != null) mainPage.SetActive(!select);
-            if (_pressed != null)
-                for (int i = 0; i < _pressed.Length; i++)
-                {
-                    _pressed[i] = false;
-                    SetShown(i, 0);
-                }
-            if (select && system != null) system.RefreshSelectPage();
-        }
 
         void SetVisible(bool visible)
         {
@@ -266,6 +243,18 @@ namespace MmdWorld
             if (_shown == null || buttonImages == null || i >= buttonImages.Length || buttonImages[i] == null || _shown[i] == state) return;
             _shown[i] = state;
             buttonImages[i].color = state == 2 ? pressColor : state == 1 ? hoverColor : normalColor;
+        }
+
+        /// <summary>処理の名前（と一覧の番号。-1 なら番号なし）でボタンを探して押す（自動確認から。ボタンの並びが変わっても壊れないように）。</summary>
+        public void PressByName(string eventName, int argument)
+        {
+            for (int i = 0; i < buttons.Length; i++)
+                if (buttons[i] != null && buttons[i].eventName == eventName && buttons[i].argument == argument)
+                {
+                    Press(i);
+                    return;
+                }
+            Debug.Log("[MmdWorld] タブレット: ボタンが無い " + eventName + " " + argument);
         }
 
         /// <summary>i 番目のボタンを押す（指・キー・自動確認から）。</summary>

@@ -8,8 +8,10 @@ namespace MmdWorld.EditorTools
     public sealed class DanceSong : ScriptableObject
     {
         public string title;
-        [Tooltip(".vmd を取り込んだ AnimationClip")]
+        [Tooltip(".vmd を取り込んだ AnimationClip（複数人のモーションなら1人目のパート）")]
         public AnimationClip motion;
+        [Tooltip("複数人のモーションの、2人目以降のパート（.vmd を取り込んだ AnimationClip）。枠1 が motion、枠2 がここの1つ目…と順に踊る。立ち位置はモーションに入っている位置（ステージの中央が原点）")]
+        public List<AnimationClip> parts = new List<AnimationClip>();
         [Tooltip("表情だけの .vmd を取り込んだ AnimationClip（配布物で表情が別になっているとき）。組み立てのとき、モーションの表情をこれで上書きする")]
         public AnimationClip face;
         public AudioClip audio;

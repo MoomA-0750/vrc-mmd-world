@@ -12,6 +12,7 @@ namespace MmdWorld
     ///
     /// VR: 左右どちらかの手のグリップを2回握ると、その手のひらの少し上・画面を目の方へ向けた位置に出し、そのときの手との位置関係のまま、手の位置と向きに付いていく。
     ///     押すのはもう一方の手の指先。
+    ///     3回握ると、握った手の少し先に、目の方へ向けてワールドに止めて置く。押すのは握った手の指先（片手だけで出して押せる）。
     ///     踊っている間はアバターの手が踊りで動くので、アバターの手ではなく、実際の左右のコントローラーの位置を使う。右手の指先は目印の球で示す。
     ///     指先がボタンに近づくと明るくなり、面を押し込むと押したことになって、振動で知らせる。
     /// デスクトップ: T キーで出し入れする。踊ると視点が回ってマウスでは狙えないので、画面の下に固定して、ボタンに書いたキーで押す。
@@ -46,8 +47,10 @@ namespace MmdWorld
         public float palmTowardEyes = 0.03f;
         [Tooltip("VR での大きさ（1 で幅 38cm）")]
         public float vrScale = 0.55f;
-        [Tooltip("グリップをこの秒数以内に2回握ったら出す・消す")]
+        [Tooltip("グリップをこの秒数以内に続けて握ったら数える（2回で手に出す・消す、3回でワールドに止めて置く）")]
         public float doubleGripSeconds = 0.5f;
+        [Tooltip("VR: 3回握ってワールドに置くとき、手から目と反対の向きへどれだけ離すか（メートル）")]
+        public float fixedAhead = 0.12f;
         [Tooltip("スティック・WASD をこれより倒したら消す")]
         public float hideOnMove = 0.5f;
         [Tooltip("デスクトップ: 頭からどこに置くか（視点についてくる）")]
@@ -72,10 +75,15 @@ namespace MmdWorld
         /// <summary>出したときの、左手から見たタブレットの位置と向き（VR）</summary>
         Vector3 _handOffset;
         Quaternion _handRotation;
-        /// <summary>右手に持っているか（押すのは反対の手）</summary>
+        /// <summary>右手に持っているか（押すのは反対の手）。ワールドに置いたときは、右手で押すか</summary>
         bool _rightHand;
+        /// <summary>ワールドに止めて置いているか（3回握ったとき）</summary>
+        bool _fixed;
         float _lastGripLeft = -10f;
         float _lastGripRight = -10f;
+        /// <summary>続けて握った回数</summary>
+        int _gripsLeft;
+        int _gripsRight;
 
         void Start()
         {
@@ -91,8 +99,9 @@ namespace MmdWorld
         }
 
         /// <summary>
-        /// グリップを2回続けて握ったら（doubleGripSeconds 以内）、その手に出す。出している手でもう一度2回握ると消し、もう一方の手なら持ち替える。
-        /// 1回だけだと、物を掴むなどふだんの操作で出てしまうため。
+        /// グリップを続けて握った回数（前の握りから doubleGripSeconds 以内）で決める。1回だけだと、物を掴むなどふだんの操作で出てしまうため。
+        /// 2回: その手に出す。その手に出しているなら消し、もう一方の手・ワールドに置いているなら、その手に持ち替える。
+        /// 3回: 2回目で出した・消したのに続けて、握った手の少し先のワールドに止めて置き、その手で押すようにする。
         /// </summary>
         public override void InputGrab(bool value, UdonInputEventArgs args)
         {
@@ -100,18 +109,28 @@ namespace MmdWorld
             bool right = args.handType == HandType.RIGHT;
             float now = Time.time;
             float last = right ? _lastGripRight : _lastGripLeft;
-            if (right) _lastGripRight = now; else _lastGripLeft = now;
-            if (now - last > doubleGripSeconds) return;
-            // 3回目の握りを、次の2回の1回目として数えない
-            if (right) _lastGripRight = -10f; else _lastGripLeft = -10f;
-            if (_visible && _rightHand == right)
+            int grips = now - last > doubleGripSeconds ? 1 : (right ? _gripsRight : _gripsLeft) + 1;
+            if (right) { _lastGripRight = now; _gripsRight = grips; }
+            else { _lastGripLeft = now; _gripsLeft = grips; }
+            if (grips == 2)
             {
-                SetVisible(false);
-                return;
+                if (_visible && !_fixed && _rightHand == right)
+                {
+                    SetVisible(false);
+                    return;
+                }
+                _rightHand = right;
+                AttachToHand();
+                SetVisible(true);
             }
-            _rightHand = right;
-            AttachToHand();
-            SetVisible(true);
+            else if (grips == 3)
+            {
+                // 4回目の握りを、次の2回の1回目として数えない
+                if (right) _lastGripRight = -10f; else _lastGripLeft = -10f;
+                _rightHand = right;
+                PlaceInWorld();
+                SetVisible(true);
+            }
         }
 
         /// <summary>出し入れする（タブレットの「閉じる」ボタン・デスクトップの T キーから呼ぶ）。VR では、前に出していた手に出す。</summary>
@@ -121,9 +140,22 @@ namespace MmdWorld
             SetVisible(!_visible);
         }
 
+        /// <summary>握った手の少し先（目と反対の向き）に、画面を目の方へ向けてワールドに止めて置く。</summary>
+        void PlaceInWorld()
+        {
+            _fixed = true;
+            var head = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).position;
+            var hand = _local.GetTrackingData(_rightHand ? VRCPlayerApi.TrackingDataType.RightHand : VRCPlayerApi.TrackingDataType.LeftHand).position;
+            var away = hand - head;
+            var position = hand + (away.sqrMagnitude > 1e-4f ? away.normalized * fixedAhead : Vector3.zero);
+            var look = position - head;
+            transform.SetPositionAndRotation(position, look.sqrMagnitude > 1e-4f ? Quaternion.LookRotation(look, Vector3.up) : transform.rotation);
+        }
+
         /// <summary>持つ手のひらの少し上・画面を目の方へ向けた位置に置き、そのときの手との位置関係を覚える。</summary>
         void AttachToHand()
         {
+            _fixed = false;
             var head = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).position;
             var hand = _local.GetTrackingData(HoldingHand());
             var toEyes = head - hand.position;
@@ -133,6 +165,12 @@ namespace MmdWorld
             var inverse = Quaternion.Inverse(hand.rotation);
             _handOffset = inverse * (position - hand.position);
             _handRotation = inverse * rotation;
+        }
+
+        /// <summary>右手で押すか（手に持っているなら反対の手、ワールドに置いたなら握った手）</summary>
+        bool PressingRight()
+        {
+            return _fixed ? _rightHand : !_rightHand;
         }
 
         VRCPlayerApi.TrackingDataType HoldingHand()
@@ -179,11 +217,14 @@ namespace MmdWorld
             }
             if (!_visible) return;
 
-            // 出したときの手との位置関係のまま、持つ手の位置と向きに付いていく。押すのはもう一方の手の指先
-            var hand = _local.GetTrackingData(HoldingHand());
-            transform.SetPositionAndRotation(hand.position + hand.rotation * _handOffset, hand.rotation * _handRotation);
+            // 手に持っているなら、出したときの手との位置関係のまま、持つ手の位置と向きに付いていく。押すのはもう一方の手の指先
+            if (!_fixed)
+            {
+                var hand = _local.GetTrackingData(HoldingHand());
+                transform.SetPositionAndRotation(hand.position + hand.rotation * _handOffset, hand.rotation * _handRotation);
+            }
 
-            var finger = _local.GetTrackingData(_rightHand ? VRCPlayerApi.TrackingDataType.LeftHand : VRCPlayerApi.TrackingDataType.RightHand);
+            var finger = _local.GetTrackingData(PressingRight() ? VRCPlayerApi.TrackingDataType.RightHand : VRCPlayerApi.TrackingDataType.LeftHand);
             var tip = finger.position + finger.rotation * fingerOffset;
             if (pointer != null) pointer.position = tip;
             TouchButtons(transform.InverseTransformPoint(tip));
@@ -261,7 +302,7 @@ namespace MmdWorld
         public void Press(int i)
         {
             if (i < 0 || i >= buttons.Length || buttons[i] == null) return;
-            if (_vr) _local.PlayHapticEventInHand(_rightHand ? VRC_Pickup.PickupHand.Left : VRC_Pickup.PickupHand.Right, 0.08f, 0.6f, 120f);
+            if (_vr) _local.PlayHapticEventInHand(PressingRight() ? VRC_Pickup.PickupHand.Right : VRC_Pickup.PickupHand.Left, 0.08f, 0.6f, 120f);
             Debug.Log("[MmdWorld] タブレット: " + buttons[i].eventName);
             buttons[i].Press();
         }

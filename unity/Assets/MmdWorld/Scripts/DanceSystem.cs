@@ -1056,13 +1056,6 @@ namespace MmdWorld
             return track < trackNames.Length ? trackNames[track] : "";
         }
 
-        int SlotIndexOf(DanceSlot target)
-        {
-            for (int i = 0; i < slots.Length; i++)
-                if (slots[i] == target) return i;
-            return 0;
-        }
-        }
 
         /// <summary>
         /// 自分が踊っている間、スティック・WASD の入力で自分の枠ごと動かす。座ったままなので、VRChat の歩きの代わりにステーションの親を動かす（乗り物と同じ）。

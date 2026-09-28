@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1102 &-5371019026782062302
+--- !u!1102 &-8303682028352410604
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
@@ -9,10 +9,10 @@ AnimatorState:
   m_PrefabAsset: {fileID: 0}
   m_Name: Dance
   m_Speed: 1
-  m_CycleOffset: 0.32039872
+  m_CycleOffset: 0.4271983
   m_Transitions: []
   m_StateMachineBehaviours:
-  - {fileID: 4208211004817200767}
+  - {fileID: 2659936277587405775}
   m_Position: {x: 50, y: 50, z: 0}
   m_IKOnFeet: 1
   m_WriteDefaultValues: 0
@@ -33,13 +33,13 @@ AnimatorController:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Song0_Seg3
+  m_Name: Track0_Seg4
   serializedVersion: 5
   m_AnimatorParameters: []
   m_AnimatorLayers:
   - serializedVersion: 5
     m_Name: Base Layer
-    m_StateMachine: {fileID: 39961244879990467}
+    m_StateMachine: {fileID: 945662947010694308}
     m_Mask: {fileID: 0}
     m_Motions: []
     m_Behaviours: []
@@ -49,7 +49,7 @@ AnimatorController:
     m_IKPass: 0
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
---- !u!1107 &39961244879990467
+--- !u!1107 &945662947010694308
 AnimatorStateMachine:
   serializedVersion: 6
   m_ObjectHideFlags: 1
@@ -59,7 +59,7 @@ AnimatorStateMachine:
   m_Name: Base Layer
   m_ChildStates:
   - serializedVersion: 1
-    m_State: {fileID: -5371019026782062302}
+    m_State: {fileID: -8303682028352410604}
     m_Position: {x: 200, y: 0, z: 0}
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
@@ -70,8 +70,8 @@ AnimatorStateMachine:
   m_EntryPosition: {x: 50, y: 120, z: 0}
   m_ExitPosition: {x: 800, y: 120, z: 0}
   m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}
-  m_DefaultState: {fileID: -5371019026782062302}
---- !u!114 &4208211004817200767
+  m_DefaultState: {fileID: -8303682028352410604}
+--- !u!114 &2659936277587405775
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}

@@ -14,7 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   title: "WAVEFILE\uFF08\u30C6\u30B9\u30C8\u7528\u30FB\u97F3\u306F\u30AF\u30EA\u30C3\u30AF\uFF09"
   motion: {fileID: -4671056281497532287, guid: a4e99c6e346795e45ae13c0c9441ab03, type: 3}
-  parts: []
+  parts:
+  - {fileID: -4671056281497532287, guid: 1f29b1f658ec47b4991f263b02b36521, type: 3}
   face: {fileID: 0}
   audio: {fileID: 8300000, guid: c5fe0fc8a453418419c56562709d0b78, type: 3}
   audioOffset: 0

@@ -1,0 +1,14 @@
+{
+	"driver_mmdhmd": {
+		"enable": true,
+		"serial_number": "MMDHMD-0",
+		"model_number": "MMD World virtual HMD",
+		"port": 39580,
+		"window_x": 0,
+		"window_y": 0,
+		"window_width": 1280,
+		"window_height": 720,
+		"render_width": 1280,
+		"render_height": 1440
+	}
+}

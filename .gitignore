@@ -26,3 +26,7 @@ scripts/win.env
 # VRChat SDK が最初に置くサンプルのシーン（使っていない。VRChat の素材なのでリポジトリに入れない）
 unity/Assets/Scenes/
 unity/Assets/Scenes.meta
+# 仮想 HMD のビルドで取ってくる OpenVR のヘッダーと、ビルドしたもの
+tools/vrsim-hmd/include/
+tools/vrsim-hmd/mmdhmd/bin/
+tools/vrsim-hmd/build/

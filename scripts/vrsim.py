@@ -1,8 +1,10 @@
-"""仮想の VR（SteamVR の null ドライバ + Virtual Motion Tracker）の頭と手を OSC で動かす。Windows 機で動かす（VMT は 127.0.0.1:39570 で受ける）。
+"""仮想の VR の頭と手を動かす。Windows 機で動かす。
+頭は自作の仮想 HMD（tools/vrsim-hmd、UDP 127.0.0.1:39580）、手は Virtual Motion Tracker（OSC 127.0.0.1:39570）。
 
 前提（README の「仮想の VR で確かめる」）:
-  steamvr.vrsettings で forcedDriver = null、TrackingOverrides で VMT_0 → /user/head。
+  tools/vrsim-hmd/install.sh で、仮想 HMD を入れて steamvr.vrsettings を forcedDriver = mmdhmd にしてある。
   VMT の setting.json で AddCompatibleControllerOnStartup = true（VMT_1 が左、VMT_2 が右の Index 互換コントローラーになる）。
+  （SteamVR の null ドライバ + TrackingOverrides で VMT を頭にする方法は、null の HMD が原点から動かず使えなかった）
 
 座標は Unity と同じ左手系（+Y が上、+Z が前、メートル）。向きは yaw pitch roll（度）。
 
@@ -21,7 +23,8 @@ import sys
 import time
 
 ADDR = ("127.0.0.1", 39570)
-DEVICES = {"head": (0, 1), "left": (1, 5), "right": (2, 6)}  # index, enable（1: トラッカー、5/6: Index 互換の左右）
+HMD_ADDR = ("127.0.0.1", 39580)
+DEVICES = {"left": (1, 5), "right": (2, 6)}  # index, enable（1: トラッカー、5/6: Index 互換の左右）
 GRIP = 1  # Index 互換のとき、TriggerIndex 1 が /input/grip/value
 _sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 _pose = {"head": [0, 1.5, 0, 0, 0, 0], "left": [-0.2, 1.1, 0.3, 0, 0, 0], "right": [0.2, 1.1, 0.3, 0, 0, 0]}
@@ -56,8 +59,12 @@ def quat(yaw, pitch, roll):
 
 def pose(name, x, y, z, yaw=0.0, pitch=0.0, roll=0.0):
     _pose[name] = [x, y, z, yaw, pitch, roll]
-    index, enable = DEVICES[name]
     qx, qy, qz, qw = quat(yaw, pitch, roll)
+    if name == "head":
+        # OpenVR の右手系へ（Z を反転。回転は X と Y の成分の符号が変わる）
+        _sock.sendto(struct.pack("<7f", x, y, -z, -qx, -qy, qz, qw), HMD_ADDR)
+        return
+    index, enable = DEVICES[name]
     send("/VMT/Raw/Unity", index, enable, 0.0, float(x), float(y), float(z), float(qx), float(qy), float(qz), float(qw))
 
 

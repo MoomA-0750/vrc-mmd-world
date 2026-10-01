@@ -83,7 +83,8 @@ namespace MmdWorld.EditorTools
                 return;
             }
             if (_analyzed != _song) Analyze();
-            if (_problem != null) EditorGUILayout.HelpBox(_problem, MessageType.Warning);
+            // スクリプトを読み込み直すと、null だった文字列は空になって残る
+            if (!string.IsNullOrEmpty(_problem)) EditorGUILayout.HelpBox(_problem, MessageType.Warning);
 
             DrawOffset();
             DrawTimeline();

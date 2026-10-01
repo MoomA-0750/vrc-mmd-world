@@ -141,6 +141,9 @@ namespace MmdWorld.EditorTools
                 var mannequinPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MmdWorld/Generated/Mannequin.prefab");
                 settings.slotAvatars = local != null ? new List<GameObject> { mannequinPrefab, local, mannequinPrefab } : new List<GameObject> { mannequinPrefab, mannequinPrefab };
                 EditorUtility.SetDirty(settings);
+                // 2人目の立ち位置を右に 0.5m・前に 0.25m ずらす（y は使わない）
+                song.partOffsets = new List<Vector3> { Vector3.zero, new Vector3(0.5f, 9f, 0.25f) };
+                EditorUtility.SetDirty(song);
                 WorldBuilder.Build();
                 var slots = UnityEngine.Object.FindObjectsOfType<DanceSlot>(true);
                 Check(slots.Length == 6, "枠が6つになる: " + slots.Length);
@@ -152,6 +155,8 @@ namespace MmdWorld.EditorTools
                     Check(index >= 0 && sys.songPartCount[index] == 3 && sys.trackNames[sys.songPartStart[index] + 1] == "selftest_left" && sys.stageOrigin != null,
                           "複数人の曲はパートの数だけトラックがあり、立ち位置の原点がある");
                     Check(index >= 0 && sys.TrackFor(index, 4) == sys.songPartStart[index] + 1, "枠5 は 2人目のパートを踊る（枠の順に割り当てて繰り返す）");
+                    Check(index >= 0 && sys.trackOffsets.Length == sys.trackNames.Length && sys.trackOffsets[sys.songPartStart[index] + 1] == new Vector3(0.5f, 0f, 0.25f)
+                          && sys.trackOffsets[sys.songPartStart[index] + 2] == Vector3.zero, "パートごとの立ち位置のずれがトラックに入る（y は 0、書いていないパートは 0）");
                     var clip = controller != null ? controller.layers[0].stateMachine.defaultState.motion as AnimationClip : null;
                     var binding = clip != null ? AnimationUtility.GetCurveBindings(clip).FirstOrDefault(b => b.propertyName == "blendShape.あ") : default;
                     var curve = clip != null && binding.propertyName != null ? AnimationUtility.GetEditorCurve(clip, binding) : null;

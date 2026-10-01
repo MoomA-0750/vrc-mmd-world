@@ -27,6 +27,7 @@ namespace MmdWorld.EditorTools
     ///   BuildAndTestVR    VR で1つ起動する（仮想の VR を scripts/vrsim.py で動かして確かめる。README の「仮想の VR で確かめる」）
     ///   SelfTest          マネージャーまわりの自己テスト（LibrarySelfTest）。結果はコンソールに [MmdWorld.SelfTest] で出る
     ///   OpenManager       マネージャーのウィンドウを開く
+    ///   OpenAudioOffset   音のずれを合わせるウィンドウを開く
     ///   Refresh           AssetDatabase.Refresh
     /// </summary>
     [InitializeOnLoad]
@@ -87,6 +88,9 @@ namespace MmdWorld.EditorTools
                         System.IO.File.WriteAllLines("Temp/MmdSelfTest.txt", new[] { failures.Count == 0 ? "成功" : "失敗 " + failures.Count + " 件" }.Concat(failures));
                         break;
                     }
+                    case "OpenAudioOffset":
+                        AudioOffsetWindow.Open();
+                        break;
                     case "OpenManager":
                         MmdWorldManagerWindow.Open();
                         break;

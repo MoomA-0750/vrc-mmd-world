@@ -156,8 +156,10 @@ namespace MmdWorld.EditorTools
                     EditorGUI.DrawRect(new Rect(motionRect.x + x, motionRect.yMax - 2 - h, 1, Mathf.Max(1, h)), new Color(1f, 0.65f, 0.25f));
                 }
             }
-            // 1 秒ごとの目盛り
-            for (float s = Mathf.Ceil(_viewStart); s < _viewStart + _viewLength; s += _viewLength > 20f ? 5f : 1f)
+            // 目盛り。文字が重ならないように、間隔を 70 ピクセル以上にする
+            float tick = new[] { 0.1f, 0.25f, 0.5f, 1f, 2f, 5f, 10f, 30f }.FirstOrDefault(v => v / secPerPixel >= 70f);
+            if (tick <= 0f) tick = 60f;
+            for (float s = Mathf.Ceil(_viewStart / tick) * tick; s < _viewStart + _viewLength; s += tick)
             {
                 float x = rect.x + (s - _viewStart) / secPerPixel;
                 EditorGUI.DrawRect(new Rect(x, rect.y, 1, rect.height), new Color(1f, 1f, 1f, 0.12f));

@@ -25,6 +25,7 @@ namespace MmdWorld.EditorTools
     ///                     同上。クライアントを2つ起動し、先に入った方が12秒後に枠1に入って再生する（そのビルドだけ）。後の方は枠1の正面から見る。
     ///                     ID を渡すと、踊る前にそのアバターに着替え、終わったら戻す ID のアバターに着替え直す（自分がアップロードしたか公開のアバターだけ）
     ///   BuildAndTestVR    VR で1つ起動する（仮想の VR を scripts/vrsim.py で動かして確かめる。README の「仮想の VR で確かめる」）
+    ///   SelfTest          マネージャーまわりの自己テスト（LibrarySelfTest）。結果はコンソールに [MmdWorld.SelfTest] で出る
     ///   OpenManager       マネージャーのウィンドウを開く
     ///   Refresh           AssetDatabase.Refresh
     /// </summary>
@@ -77,6 +78,13 @@ namespace MmdWorld.EditorTools
                     case "BuildAndTestVR":
                         BuildAndTest(false, "", "", 0, vr: true);
                         break;
+                    case "SelfTest":
+                    {
+                        var failures = LibrarySelfTest.Run();
+                        foreach (var f in failures) Debug.LogError("[MmdWorld.SelfTest] 失敗: " + f);
+                        Debug.Log($"[MmdWorld.SelfTest] 結果: {(failures.Count == 0 ? "成功" : "失敗 " + failures.Count + " 件")}");
+                        break;
+                    }
                     case "OpenManager":
                         MmdWorldManagerWindow.Open();
                         break;

@@ -45,6 +45,7 @@ namespace MmdWorld.EditorTools
         public static void Open(DanceSong song)
         {
             var window = GetWindow<AudioOffsetWindow>("音のずれ");
+            window.minSize = new Vector2(720, 480);
             if (song != null) window.SetSong(song);
             window.Show();
         }

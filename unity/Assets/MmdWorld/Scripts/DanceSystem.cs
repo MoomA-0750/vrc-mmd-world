@@ -981,6 +981,19 @@ namespace MmdWorld
         }
 
         /// <summary>DanceStation から: 自分がステーションに入った。自分が座らせたのでなければ（ステーションを直接選んだなど）、すぐ降ろす。</summary>
+        /// <summary>自分が座っている枠のステーションの根元（踊りに合わせて動く）。座っていなければ null（タブレットをワールドに置くときの基準）。</summary>
+        public Transform GetLocalStationRoot()
+        {
+            if (_localStation == null) return null;
+            foreach (var slot in slots)
+            {
+                if (slot == null) continue;
+                for (int i = 0; i < slot.StationCount(); i++)
+                    if (slot.GetStation(i) == _localStation) return slot.GetStationRoot();
+            }
+            return null;
+        }
+
         public void _OnLocalStationEntered(VRCStation station)
         {
             if (station == _localStation || station == _restoreStation) return;

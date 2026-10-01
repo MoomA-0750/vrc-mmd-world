@@ -12,7 +12,7 @@ namespace MmdWorld
     ///
     /// VR: 左右どちらかの手のグリップを2回握ると、その手のひらの少し上・画面を目の方へ向けた位置に出し、そのときの手との位置関係のまま、手の位置と向きに付いていく。
     ///     押すのはもう一方の手の指先。
-    ///     3回握ると、握った手の少し先に、目の方へ向けてワールドに止めて置く。押すのは握った手の指先（片手だけで出して押せる）。
+    ///     3回握ると、握った手の少し先に、目の方へ向けてワールドに止めて置く（踊っている間は、体と一緒に動くステーションに止める）。押すのは握った手の指先（片手だけで出して押せる）。
     ///     踊っている間はアバターの手が踊りで動くので、アバターの手ではなく、実際の左右のコントローラーの位置を使う。右手の指先は目印の球で示す。
     ///     指先がボタンに近づくと明るくなり、面を押し込むと押したことになって、振動で知らせる。
     /// デスクトップ: T キーで出し入れする。踊ると視点が回ってマウスでは狙えないので、画面の下に固定して、ボタンに書いたキーで押す。
@@ -84,6 +84,10 @@ namespace MmdWorld
         bool _rightHand;
         /// <summary>ワールドに止めて置いているか（3回握ったとき）</summary>
         bool _fixed;
+        /// <summary>踊っている間にワールドに置いたときの基準（自分のステーションの根元。踊りで動くので、一緒に動かす）と、そこから見た位置と向き</summary>
+        Transform _anchor;
+        Vector3 _anchorPosition;
+        Quaternion _anchorRotation;
         float _nextTouchLog;
         const string GripAxisLeft = "Oculus_CrossPlatform_PrimaryHandTrigger";
         const string GripAxisRight = "Oculus_CrossPlatform_SecondaryHandTrigger";
@@ -190,6 +194,13 @@ namespace MmdWorld
             var position = hand + (away.sqrMagnitude > 1e-4f ? away.normalized * fixedAhead : Vector3.zero);
             var look = position - head;
             transform.SetPositionAndRotation(position, look.sqrMagnitude > 1e-4f ? Quaternion.LookRotation(look, Vector3.up) : transform.rotation);
+            // 踊っている間は体がステーションごと動くので、ワールドではなくステーションに止める（でないと指先が届かなくなる）
+            _anchor = system != null ? system.GetLocalStationRoot() : null;
+            if (_anchor != null)
+            {
+                _anchorPosition = _anchor.InverseTransformPoint(transform.position);
+                _anchorRotation = Quaternion.Inverse(_anchor.rotation) * transform.rotation;
+            }
         }
 
         /// <summary>持つ手のひらの少し上・画面を目の方へ向けた位置に置き、そのときの手との位置関係を覚える。</summary>
@@ -263,6 +274,10 @@ namespace MmdWorld
             {
                 var hand = _local.GetTrackingData(HoldingHand());
                 transform.SetPositionAndRotation(hand.position + hand.rotation * _handOffset, hand.rotation * _handRotation);
+            }
+            else if (_anchor != null)
+            {
+                transform.SetPositionAndRotation(_anchor.TransformPoint(_anchorPosition), _anchor.rotation * _anchorRotation);
             }
 
             var finger = _local.GetTrackingData(PressingRight() ? VRCPlayerApi.TrackingDataType.RightHand : VRCPlayerApi.TrackingDataType.LeftHand);

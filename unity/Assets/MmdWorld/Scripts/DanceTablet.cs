@@ -51,6 +51,9 @@ namespace MmdWorld
         public float doubleGripSeconds = 0.5f;
         [Tooltip("VR: 3回握ってワールドに置くとき、手から目と反対の向きへどれだけ離すか（メートル）")]
         public float fixedAhead = 0.12f;
+        [Tooltip("グリップの軸がこれを超えたら握った、gripOff を下回ったら離したとみなす")]
+        public float gripOn = 0.7f;
+        public float gripOff = 0.3f;
         [Tooltip("スティック・WASD をこれより倒したら消す")]
         public float hideOnMove = 0.5f;
         [Tooltip("デスクトップ: 頭からどこに置くか（視点についてくる）")]
@@ -82,6 +85,12 @@ namespace MmdWorld
         /// <summary>ワールドに止めて置いているか（3回握ったとき）</summary>
         bool _fixed;
         float _nextTouchLog;
+        const string GripAxisLeft = "Oculus_CrossPlatform_PrimaryHandTrigger";
+        const string GripAxisRight = "Oculus_CrossPlatform_SecondaryHandTrigger";
+        /// <summary>グリップの軸が読めたか（読めたら InputGrab は使わない）と、いま握っているか</summary>
+        bool _pollWorks;
+        bool _pollLeft;
+        bool _pollRight;
         float _lastGripLeft = -10f;
         float _lastGripRight = -10f;
         /// <summary>続けて握った回数</summary>
@@ -101,22 +110,48 @@ namespace MmdWorld
             SetVisible(false);
         }
 
+        public override void InputGrab(bool value, UdonInputEventArgs args)
+        {
+            // ステーションに座っている間は InputGrab が来ないので、ふだんはグリップの軸を毎フレーム読む（PollGrips）。軸が読めない環境のときだけ、こちらを使う
+            if (!_vr || !value || _pollWorks) return;
+            Grip(args.handType == HandType.RIGHT);
+        }
+
+        /// <summary>
+        /// グリップの軸を読み、握り始めを Grip に渡す。VRChat は座っている間（踊っている間）InputGrab を送らないが、軸は読める。
+        /// 最初に値が来たときは、そのとき握っているかを覚えるだけにする（同じ握りを InputGrab と二重に数えないため）。
+        /// </summary>
+        void PollGrips()
+        {
+            float left = Input.GetAxisRaw(GripAxisLeft);
+            float right = Input.GetAxisRaw(GripAxisRight);
+            if (!_pollWorks)
+            {
+                if (left < 0.01f && right < 0.01f) return;
+                _pollWorks = true;
+                _pollLeft = left > gripOn;
+                _pollRight = right > gripOn;
+                return;
+            }
+            if (!_pollLeft && left > gripOn) { _pollLeft = true; Grip(false); }
+            else if (_pollLeft && left < gripOff) _pollLeft = false;
+            if (!_pollRight && right > gripOn) { _pollRight = true; Grip(true); }
+            else if (_pollRight && right < gripOff) _pollRight = false;
+        }
+
         /// <summary>
         /// グリップを続けて握った回数（前の握りから doubleGripSeconds 以内）で決める。1回だけだと、物を掴むなどふだんの操作で出てしまうため。
         /// 2回: その手に出す。その手に出しているなら消し、もう一方の手・ワールドに置いているなら、その手に持ち替える。
         /// 3回: 2回目で出した・消したのに続けて、握った手の少し先のワールドに止めて置き、その手で押すようにする。
         /// </summary>
-        public override void InputGrab(bool value, UdonInputEventArgs args)
+        void Grip(bool right)
         {
-            if (logTouch && !value) Debug.Log("[MmdWorld] タブレット: 離した");
-            if (!_vr || !value) return;
-            bool right = args.handType == HandType.RIGHT;
             float now = Time.time;
             float last = right ? _lastGripRight : _lastGripLeft;
             int grips = now - last > doubleGripSeconds ? 1 : (right ? _gripsRight : _gripsLeft) + 1;
             if (right) { _lastGripRight = now; _gripsRight = grips; }
             else { _lastGripLeft = now; _gripsLeft = grips; }
-            if (logTouch) Debug.Log("[MmdWorld] タブレット: " + (right ? "右" : "左") + "手で握った（" + grips + " 回目）");
+            if (logTouch) Debug.Log("[MmdWorld] タブレット: " + (right ? "右" : "左") + "手で握った（" + grips + " 回目、" + (_pollWorks ? "軸" : "InputGrab") + "）");
             if (grips == 2)
             {
                 if (_visible && !_fixed && _rightHand == right)
@@ -220,6 +255,7 @@ namespace MmdWorld
                 UpdateDesktop();
                 return;
             }
+            PollGrips();
             if (!_visible) return;
 
             // 手に持っているなら、出したときの手との位置関係のまま、持つ手の位置と向きに付いていく。押すのはもう一方の手の指先

@@ -172,9 +172,13 @@ namespace MmdWorld.EditorTools
                 int expectedSlotAvatars = local != null ? 2 : 1;
                 Check(system.slotAvatars.Length == expectedSlotAvatars && system.slotAvatarNames.Length == expectedSlotAvatars, "枠で踊らせるアバターが置かれる（重複は1体）: " + system.slotAvatars.Length);
                 Check(system.slotAvatars.All(a => a != null && !a.gameObject.activeSelf && a.runtimeAnimatorController != null), "枠のアバターは最初は隠れていて、踊りの Animator が付いている");
-                Check(system.slotTexts.Length == 4 && system.songRowTexts.Length == 7 && system.modelRowTexts.Length == 7
-                      && UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSystem.SlotButton)) == 4,
-                      "タブレットに、枠の列（4つ）と左右の一覧（7行ずつ）がある");
+                Check(system.uiCopies == 2 && system.slotTexts.Length == 8 && system.songRowTexts.Length == 14 && system.modelRowTexts.Length == 14
+                      && UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSystem.SlotButton)) == 8,
+                      "タブレットと舞台の横のパネルの両方に、枠の列（4つ）と左右の一覧（7行ずつ）がある");
+                var tablet = UnityEngine.Object.FindObjectsOfType<DanceTablet>(true).First();
+                var panelButtons = UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Where(b => !tablet.buttons.Contains(b)).ToList();
+                Check(panelButtons.Count == tablet.buttons.Length - 1 && panelButtons.All(b => b.GetComponent<Collider>() != null && b.target == system),
+                      "舞台の横のパネルは、タブレットと同じボタン（「閉じる」以外）を、当たり判定つきで持つ");
                 Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).All(b => b.eventName != nameof(DanceSlot.NextAvatar)), "枠ごとの、アバターを順に切り替えるボタンは無い");
                 if (local != null)
                 {

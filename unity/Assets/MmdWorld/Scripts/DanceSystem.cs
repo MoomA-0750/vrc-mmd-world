@@ -47,15 +47,17 @@ namespace MmdWorld
         [Tooltip("トラッキングを戻す Controller に座ってから降りるまでの秒数")]
         public float restoreSeconds = 0.5f;
 
-        [Header("手元のパネルの一覧（ワールドを組み立てるメニューが入れる）")]
-        [Tooltip("中央の上の、枠の列のボタンの文字（1ページぶん）。「空き」を押すとそこで踊る")]
+        [Header("操作の画面の一覧（ワールドを組み立てるメニューが入れる）")]
+        [Tooltip("同じ画面がいくつあるか（手元のタブレットと舞台の横のパネル）。下の一覧は、1ページぶんの行をこの数だけ続けて並べたもの")]
+        public int uiCopies = 1;
+        [Tooltip("中央の上の、枠の列のボタンの文字（1ページぶん × uiCopies）。「空き」を押すとそこで踊る")]
         public Text[] slotTexts;
-        [Tooltip("右の、曲の一覧の行の文字（1ページぶん）")]
+        [Tooltip("右の、曲の一覧の行の文字（1ページぶん × uiCopies）")]
         public Text[] songRowTexts;
-        [Tooltip("左の、モデル（ワールドのアバター）の一覧の行の文字（1ページぶん）。押してから枠を押すと、その枠に置く")]
+        [Tooltip("左の、モデル（ワールドのアバター）の一覧の行の文字（1ページぶん × uiCopies）。押してから枠を押すと、その枠に置く")]
         public Text[] modelRowTexts;
-        public Text songListHeader;
-        public Text modelListHeader;
+        public Text[] songListHeaders;
+        public Text[] modelListHeaders;
         [Tooltip("DanceButton が押したボタンの番号を入れる")]
         public int pressedArgument;
         public Color listTextColor = Color.white;
@@ -534,9 +536,10 @@ namespace MmdWorld
 
         // ---- 手元のパネルの一覧（枠の列・左のモデル・右の曲） ----
 
+        /// <summary>一覧の1ページの行数（rows は、同じ画面の数 uiCopies だけ1ページぶんを続けて並べたもの）。</summary>
         int PerPage(Text[] rows)
         {
-            return rows == null ? 0 : Mathf.Max(1, rows.Length);
+            return rows == null ? 0 : Mathf.Max(1, rows.Length / Mathf.Max(1, uiCopies));
         }
 
         int Pages(int count, Text[] rows)
@@ -621,7 +624,7 @@ namespace MmdWorld
                 {
                     var text = slotTexts[i];
                     if (text == null) continue;
-                    int index = _slotPage * PerPage(slotTexts) + i;
+                    int index = _slotPage * PerPage(slotTexts) + i % PerPage(slotTexts);
                     if (index >= slots.Length || slots[index] == null)
                     {
                         text.text = "";
@@ -640,7 +643,7 @@ namespace MmdWorld
                 {
                     var text = songRowTexts[i];
                     if (text == null) continue;
-                    int index = _songPage * PerPage(songRowTexts) + i;
+                    int index = _songPage * PerPage(songRowTexts) + i % PerPage(songRowTexts);
                     if (index >= SongCount())
                     {
                         text.text = "";
@@ -650,7 +653,7 @@ namespace MmdWorld
                     text.text = (index == _songIndex ? "▶ " : "") + songTitles[index] + (parts > 1 ? "（" + parts + "人）" : "");
                     text.color = index == _songIndex ? listCurrentColor : (_playing ? listDisabledColor : listTextColor);
                 }
-                if (songListHeader != null) songListHeader.text = "曲 " + (_songPage + 1) + "/" + Pages(SongCount(), songRowTexts);
+                SetTexts(songListHeaders, "曲 " + (_songPage + 1) + "/" + Pages(SongCount(), songRowTexts));
             }
             if (modelRowTexts != null)
             {
@@ -658,19 +661,25 @@ namespace MmdWorld
                 {
                     var text = modelRowTexts[i];
                     if (text == null) continue;
-                    int index = _modelPage * PerPage(modelRowTexts) + i;
+                    int index = _modelPage * PerPage(modelRowTexts) + i % PerPage(modelRowTexts);
                     if (index >= SlotAvatarCount())
                     {
-                        text.text = i == 0 && SlotAvatarCount() == 0 ? "（ワールドに\nアバター無し）" : "";
+                        text.text = i % PerPage(modelRowTexts) == 0 && SlotAvatarCount() == 0 ? "（ワールドに\nアバター無し）" : "";
                         text.color = listDisabledColor;
                         continue;
                     }
                     text.text = SlotAvatarName(index);
                     text.color = index == _armedAvatar ? listCurrentColor : (IsSlotAvatarUsed(index, null) ? listDisabledColor : listTextColor);
                 }
-                if (modelListHeader != null)
-                    modelListHeader.text = _armedAvatar >= 0 ? "置く枠を押す" : "モデル " + (_modelPage + 1) + "/" + Pages(SlotAvatarCount(), modelRowTexts);
+                SetTexts(modelListHeaders, _armedAvatar >= 0 ? "置く枠を押す" : "モデル " + (_modelPage + 1) + "/" + Pages(SlotAvatarCount(), modelRowTexts));
             }
+        }
+
+        void SetTexts(Text[] texts, string value)
+        {
+            if (texts == null) return;
+            foreach (var t in texts)
+                if (t != null) t.text = value;
         }
 
         /// <summary>

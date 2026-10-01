@@ -155,8 +155,17 @@ namespace MmdWorld.EditorTools
             var slotAvatars = BuildSlotAvatars(settings.slotAvatars, previewController);
 
             int tickCount = segments.Count > 0 ? segments.Max(g => g.Count) : 0;
-            var (title, status, panelBar) = BuildPanel(system, tickCount);
-            var (tablet, tabletTitle, tabletStatus, tabletBar) = BuildTablet(system, tickCount);
+            var panelUi = BuildPanel(system, tickCount);
+            var (tablet, tabletUi) = BuildTablet(system, tickCount);
+            // 一覧の文字は、タブレットとパネルの2組を並べて渡す（DanceSystem が1ページの行数で折り返して両方に書く）
+            var uis = new[] { tabletUi, panelUi };
+            system.uiCopies = uis.Length;
+            system.slotTexts = uis.SelectMany(u => u.slotTexts).ToArray();
+            system.modelRowTexts = uis.SelectMany(u => u.modelRows).ToArray();
+            system.songRowTexts = uis.SelectMany(u => u.songRows).ToArray();
+            system.modelListHeaders = uis.Select(u => u.modelHeader).ToArray();
+            system.songListHeaders = uis.Select(u => u.songHeader).ToArray();
+            system.inPlaceLabels = uis.SelectMany(u => u.inPlaceLabels).ToArray();
 
             system.songTitles = songs.Select(s => s.DisplayTitle).ToArray();
             system.songAudio = songs.Select(s => s.audio).ToArray();
@@ -179,15 +188,15 @@ namespace MmdWorld.EditorTools
             system.slotAvatars = slotAvatars.ToArray();
             system.slotAvatarNames = slotAvatars.Select(a => a.name).ToArray();
             system.countdownSeconds = settings.countdownSeconds;
-            system.titleText = title;
-            system.statusText = status;
-            system.tabletTitleText = tabletTitle;
-            system.tabletStatusText = tabletStatus;
+            system.titleText = panelUi.title;
+            system.statusText = panelUi.status;
+            system.tabletTitleText = tabletUi.title;
+            system.tabletStatusText = tabletUi.status;
             system.tablet = tablet;
             // 1つだけの変数に AnimatorController を入れると、VRChat でワールドを読み込めなくなった（エディタの型のまま保存されるらしい）。区切りの Controller と同じく配列で渡す
             var restore = BuildRestoreController();
             system.restoreControllers = restore != null ? new RuntimeAnimatorController[] { restore } : new RuntimeAnimatorController[0];
-            system.seekBars = new[] { panelBar, tabletBar };
+            system.seekBars = new[] { panelUi.seekBar, tabletUi.seekBar };
             UdonSharpEditorUtility.CopyProxyToUdon(system);
 
             PruneNetworkIds();
@@ -637,91 +646,49 @@ namespace MmdWorld.EditorTools
             return slot;
         }
 
-        static (Text title, Text status, DanceSeekBar seekBar) BuildPanel(DanceSystem system, int tickCount)
+        /// <summary>操作の画面（手元のタブレットと舞台の横のパネルで同じもの）を組み立てた結果。DanceSystem・DanceTablet に渡す。</summary>
+        sealed class ControlUi
         {
-            var panel = new GameObject("Panel");
-            panel.transform.position = new Vector3(-3.2f, 0f, 1.2f);
-
-            var board = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            board.name = "Board";
-            Object.DestroyImmediate(board.GetComponent<Collider>());
-            board.transform.SetParent(panel.transform, false);
-            board.transform.localPosition = new Vector3(0f, 1.2f, 0.03f);
-            board.transform.localScale = new Vector3(1.9f, 1.35f, 0.02f);
-            board.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Board.mat", new Color(0.08f, 0.08f, 0.1f));
-
-            var title = CreateText(panel.transform, "Title", "曲", 60, new Vector2(850, 120));
-            title.transform.parent.localPosition = new Vector3(0f, 1.74f, 0f);
-            var status = CreateText(panel.transform, "Status", "停止中", 44, new Vector2(880, 140));
-            status.transform.parent.localPosition = new Vector3(0f, 1.5f, 0f);
-
-            // 3 段: 曲と再生 / シーク・プレビュー・ループ / 範囲
-            var buttons = new[]
-            {
-                ("◀ 曲", "PrevSong"), ("▶ 再生", "Play"), ("■ 停止", "Stop"), ("曲 ▶", "NextSong"),
-                ("≪ 区切り", "SeekBack"), ("区切り ≫", "SeekForward"), ("プレビュー", "TogglePreview"), ("ループ", "ToggleLoop"),
-                ("開始 ◀", "RangeStartBack"), ("開始 ▶", "RangeStartForward"), ("終了 ◀", "RangeEndBack"), ("終了 ▶", "RangeEndForward"),
-            };
-            for (int i = 0; i < buttons.Length; i++)
-            {
-                var (text, evt) = buttons[i];
-                float bx = -0.66f + (i % 4) * 0.44f;
-                float by = 1.24f - (i / 4) * 0.24f;
-                var button = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                button.name = "Button_" + evt;
-                button.transform.SetParent(panel.transform, false);
-                button.transform.localPosition = new Vector3(bx, by, 0f);
-                button.transform.localScale = new Vector3(0.38f, 0.18f, 0.06f);
-                button.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Button.mat", new Color(0.25f, 0.45f, 0.8f));
-                var db = UdonSharpUndo.AddComponent<DanceButton>(button);
-                db.target = system;
-                db.eventName = evt;
-                UdonSharpEditorUtility.GetBackingUdonBehaviour(db).interactText = text;
-                UdonSharpEditorUtility.CopyProxyToUdon(db);
-
-                var label = CreateText(panel.transform, "Label_" + evt, text, 36, new Vector2(200, 80));
-                label.transform.parent.localPosition = new Vector3(bx, by, -0.04f);
-            }
-
-            var barRoot = new GameObject("SeekBar");
-            var seekBar = UdonSharpUndo.AddComponent<DanceSeekBar>(barRoot);
-            BuildSeekBar(seekBar, barRoot.transform, panel.transform, new Vector3(0f, 1.385f, -0.01f), 1.7f, 0.035f, 0.02f, tickCount);
-            return (title, status, seekBar);
+            public Text title, status, modelHeader, songHeader;
+            public DanceSeekBar seekBar;
+            public readonly List<DanceButton> buttons = new List<DanceButton>();
+            public readonly List<Image> images = new List<Image>();
+            public readonly List<Vector2> sizes = new List<Vector2>();
+            public readonly List<string> keys = new List<string>();
+            public readonly List<GameObject> keyLabels = new List<GameObject>();
+            public readonly List<Text> slotTexts = new List<Text>();
+            public List<Text> modelRows, songRows;
+            public readonly List<Text> inPlaceLabels = new List<Text>();
         }
 
         /// <summary>
-        /// 手元に浮かぶタブレット（DanceTablet）。見た目は uGUI（1 ピクセル = 1mm のワールド空間の Canvas）。
+        /// 操作の画面を uGUI で組み立てる（1 ピクセル = scale メートルのワールド空間の Canvas を rootGo の子に作る）。
         /// 中央: 題名・状態・シークバー・枠の列（「空き」を押すとそこで踊る）・再生などのボタン。左: モデル（ワールドのアバター）の一覧。右: 曲の一覧。
-        /// VR では左右どちらかの手のグリップを2回握ってその手のひらの上に出し、もう一方の手の指先で押す。デスクトップでは T キーで出し、ボタンに書いたキーで押す。
-        /// 面は Canvas の z = 0 で、自分の側を -Z にする（DanceTablet が指先の位置と比べる）。
+        /// 面は Canvas の z = 0 で、見る側を -Z にする（DanceTablet が指先の位置と比べる）。
+        /// tablet があれば手元のタブレット用（「閉じる」とキーの表示を付ける）。null なら舞台の横のパネル用で、ボタンに当たり判定を付けて Interact で押せるようにする。
         /// </summary>
-        static (DanceTablet tablet, Text title, Text status, DanceSeekBar seekBar) BuildTablet(DanceSystem system, int tickCount)
+        static ControlUi BuildControlUi(GameObject rootGo, DanceSystem system, DanceTablet tablet, int tickCount, float scale, Vector3 position)
         {
             const float centerW = 380f, listW = 190f, gap = 8f, height = 340f;
             float listX = centerW * 0.5f + gap + listW * 0.5f;
+            bool onWorld = tablet == null;
+            var ui = new ControlUi();
 
-            var rootGo = new GameObject("DanceTablet");
             var body = new GameObject("Body", typeof(RectTransform), typeof(Canvas));
             body.transform.SetParent(rootGo.transform, false);
+            body.transform.localPosition = position;
             body.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
             var canvas = (RectTransform)body.transform;
             canvas.sizeDelta = new Vector2(centerW + (gap + listW) * 2f, height);
-            canvas.localScale = Vector3.one * 0.001f;
+            canvas.localScale = Vector3.one * scale;
 
             var sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
-            var boardColor = new Color(0.08f, 0.08f, 0.1f, 0.92f);
+            var boardColor = new Color(0.08f, 0.08f, 0.1f, onWorld ? 1f : 0.92f);
             UiImage(canvas, "ModelBoard", new Vector2(-listX, 0f), new Vector2(listW, height), boardColor, sprite);
             UiImage(canvas, "Board", Vector2.zero, new Vector2(centerW, height), boardColor, sprite);
             UiImage(canvas, "SongBoard", new Vector2(listX, 0f), new Vector2(listW, height), boardColor, sprite);
-            var title = UiText(canvas, "Title", "曲", 16, new Vector2(0f, 150f), new Vector2(360f, 24f));
-            var status = UiText(canvas, "Status", "停止中", 12, new Vector2(0f, 121f), new Vector2(360f, 32f));
-
-            var buttons = new List<DanceButton>();
-            var images = new List<Image>();
-            var sizes = new List<Vector2>();
-            var keys = new List<string>();
-            var keyLabels = new List<GameObject>();
-            var tablet = UdonSharpUndo.AddComponent<DanceTablet>(rootGo);
+            ui.title = UiText(canvas, "Title", "曲", 16, new Vector2(0f, 150f), new Vector2(360f, 24f));
+            ui.status = UiText(canvas, "Status", "停止中", 12, new Vector2(0f, 121f), new Vector2(360f, 32f));
 
             // 1つのボタンを作って、押す判定・キーの一覧に足す。label を返す
             Text AddButton(string text, string evt, KeyCode key, float x, float y, float w, float h, bool onTablet, int argument, int fontSize)
@@ -731,33 +698,40 @@ namespace MmdWorld.EditorTools
                 db.target = onTablet ? (UdonSharpBehaviour)tablet : system;
                 db.eventName = evt;
                 db.argument = argument;
+                if (onWorld)
+                {
+                    // 舞台の横のパネルは、デスクトップでは視線で、VR ではレーザーで Interact して押す。人がぶつからないようにトリガーにする
+                    var collider = image.gameObject.AddComponent<BoxCollider>();
+                    collider.size = new Vector3(w, h, 10f);
+                    collider.isTrigger = true;
+                    UdonSharpEditorUtility.GetBackingUdonBehaviour(db).interactText = string.IsNullOrEmpty(text) ? evt : text;
+                }
                 UdonSharpEditorUtility.CopyProxyToUdon(db);
-                buttons.Add(db);
-                images.Add(image);
+                ui.buttons.Add(db);
+                ui.images.Add(image);
                 // DanceTablet は、ボタンの中心を DanceTablet から見た位置（メートル）で、大きさをここの値（メートル）で比べる
-                sizes.Add(new Vector2(w, h) * 0.001f);
-                keys.Add(KeyInputName(key));
+                ui.sizes.Add(new Vector2(w, h) * 0.001f);
+                ui.keys.Add(KeyInputName(key));
                 var label = UiText(image.transform, "Label", text, fontSize, Vector2.zero, new Vector2(w - 6f, h));
                 label.horizontalOverflow = HorizontalWrapMode.Wrap;
-                if (key != KeyCode.None)
+                if (key != KeyCode.None && !onWorld)
                 {
                     var keyLabel = UiText(image.transform, "Key", "[" + KeyName(key) + "]", 8, new Vector2(3f, -2f), new Vector2(w, h));
                     keyLabel.alignment = TextAnchor.UpperLeft;
                     keyLabel.color = new Color(1f, 0.85f, 0.3f);
-                    keyLabels.Add(keyLabel.gameObject);
+                    ui.keyLabels.Add(keyLabel.gameObject);
                 }
                 return label;
             }
 
             // 中央: 枠の列（ページ送りつき）。「空き」を押すとそこで踊り、自分の枠をもう一度押すとやめる
-            var slotTexts = new List<Text>();
             var slotKeys = new[] { KeyCode.F1, KeyCode.F2, KeyCode.F3, KeyCode.F4 };
             AddButton("◀", "SlotPagePrev", KeyCode.F5, -172f, 55f, 28f, 44f, false, -1, 12);
-            for (int i = 0; i < 4; i++)
-                slotTexts.Add(AddButton("", "SlotButton", slotKeys[i], -114f + 76f * i, 55f, 70f, 44f, false, i, 9));
+            for (int i = 0; i < SlotRowsPerPage; i++)
+                ui.slotTexts.Add(AddButton("", "SlotButton", slotKeys[i], -114f + 76f * i, 55f, 70f, 44f, false, i, 9));
             AddButton("▶", "SlotPageNext", KeyCode.F6, 172f, 55f, 28f, 44f, false, -1, 12);
 
-            // 中央: 再生などのボタン
+            // 中央: 再生などのボタン（「閉じる」は手元のタブレットだけ）
             var defs = new (string text, string evt, KeyCode key, int col, int row, bool onTablet)[]
             {
                 ("▶ 再生", "Play", KeyCode.Alpha1, 0, 0, false), ("■ 停止", "Stop", KeyCode.Alpha2, 1, 0, false),
@@ -768,11 +742,11 @@ namespace MmdWorld.EditorTools
                 ("終了 ◀", "RangeEndBack", KeyCode.Alpha9, 2, 2, false), ("終了 ▶", "RangeEndForward", KeyCode.Alpha0, 3, 2, false),
             };
             const float cellW = 86f, cellH = 52f, top = 5f;
-            var inPlaceLabels = new List<Text>();
             foreach (var d in defs)
             {
+                if (d.onTablet && onWorld) continue;
                 var label = AddButton(d.text, d.evt, d.key, -cellW * 1.5f + cellW * d.col, top - cellH * d.row, cellW - 8f, cellH - 10f, d.onTablet, -1, 12);
-                if (d.evt == "ToggleInPlace") inPlaceLabels.Add(label);
+                if (d.evt == "ToggleInPlace") ui.inPlaceLabels.Add(label);
             }
             var hint = UiText(canvas, "Hint", "枠の「空き」を押すとそこで踊る（自分の枠をもう一度押すとやめる）。左でアバターを選んでから枠を押すと、その枠に置く", 9, new Vector2(0f, -148f), new Vector2(360f, 34f));
             hint.horizontalOverflow = HorizontalWrapMode.Wrap;
@@ -789,20 +763,38 @@ namespace MmdWorld.EditorTools
                 AddButton("▼", next, nextKey, x + 44f, -150f, 80f, 28f, false, -1, 12);
                 return rows;
             }
-            var modelRows = BuildList(-listX, "ModelRowButton", "ModelPagePrev", "ModelPageNext",
-                new[] { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.V, KeyCode.B, KeyCode.N, KeyCode.M }, KeyCode.Comma, KeyCode.Period, out var modelHeader);
-            var songRows = BuildList(listX, "SongRowButton", "SongPagePrev", "SongPageNext",
-                new[] { KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.Y, KeyCode.U, KeyCode.I, KeyCode.O }, KeyCode.LeftBracket, KeyCode.RightBracket, out var songHeader);
-            system.slotTexts = slotTexts.ToArray();
-            system.modelRowTexts = modelRows.ToArray();
-            system.songRowTexts = songRows.ToArray();
-            system.modelListHeader = modelHeader;
-            system.songListHeader = songHeader;
-            system.inPlaceLabels = inPlaceLabels.ToArray();
+            ui.modelRows = BuildList(-listX, "ModelRowButton", "ModelPagePrev", "ModelPageNext",
+                new[] { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.V, KeyCode.B, KeyCode.N, KeyCode.M }, KeyCode.Comma, KeyCode.Period, out ui.modelHeader);
+            ui.songRows = BuildList(listX, "SongRowButton", "SongPagePrev", "SongPageNext",
+                new[] { KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.Y, KeyCode.U, KeyCode.I, KeyCode.O }, KeyCode.LeftBracket, KeyCode.RightBracket, out ui.songHeader);
 
             // シークバー。body を隠すと中の UdonBehaviour が動かなくなるので、スクリプトは常に出ている根元に付け、見た目だけ body の中に置く
-            var seekBar = UdonSharpUndo.AddComponent<DanceSeekBar>(rootGo);
-            BuildUiSeekBar(seekBar, canvas, new Vector2(0f, 94f), 340f, 9f, tickCount, sprite);
+            ui.seekBar = UdonSharpUndo.AddComponent<DanceSeekBar>(rootGo);
+            BuildUiSeekBar(ui.seekBar, canvas, new Vector2(0f, 94f), 340f, 9f, tickCount, sprite);
+            return ui;
+        }
+
+        /// <summary>枠の列の1ページの数（手元のタブレットとパネルで同じ）。</summary>
+        const int SlotRowsPerPage = 4;
+
+        /// <summary>舞台の横の操作パネル。手元のタブレットと同じ画面を大きくして置く（以前は別に作っていて、機能が追いついていなかった）。</summary>
+        static ControlUi BuildPanel(DanceSystem system, int tickCount)
+        {
+            var panel = new GameObject("Panel");
+            panel.transform.position = new Vector3(-3.2f, 0f, 1.2f);
+            // 幅 776 ピクセル × 2.5mm ≒ 1.9m。中心を目の高さより少し下に
+            return BuildControlUi(panel, system, null, tickCount, 0.0025f, new Vector3(0f, 1.35f, 0f));
+        }
+
+        /// <summary>
+        /// 手元に浮かぶタブレット（DanceTablet）。画面は BuildControlUi（1 ピクセル = 1mm）。
+        /// VR では左右どちらかの手のグリップを2回握ってその手のひらの上に出し、もう一方の手の指先で押す。デスクトップでは T キーで出し、ボタンに書いたキーで押す。
+        /// </summary>
+        static (DanceTablet tablet, ControlUi ui) BuildTablet(DanceSystem system, int tickCount)
+        {
+            var rootGo = new GameObject("DanceTablet");
+            var tablet = UdonSharpUndo.AddComponent<DanceTablet>(rootGo);
+            var ui = BuildControlUi(rootGo, system, tablet, tickCount, 0.001f, Vector3.zero);
 
             // 指先の目印（タブレットとは別に置く。DanceTablet がコントローラーから割り出した位置へ動かす）
             var pointer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -812,12 +804,12 @@ namespace MmdWorld.EditorTools
             pointer.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Pointer.mat", new Color(1f, 0.6f, 0.1f));
 
             tablet.system = system;
-            tablet.body = body;
-            tablet.buttons = buttons.ToArray();
-            tablet.buttonImages = images.ToArray();
-            tablet.buttonSizes = sizes.ToArray();
-            tablet.desktopKeys = keys.ToArray();
-            tablet.desktopKeyLabels = keyLabels.ToArray();
+            tablet.body = rootGo.transform.Find("Body").gameObject;
+            tablet.buttons = ui.buttons.ToArray();
+            tablet.buttonImages = ui.images.ToArray();
+            tablet.buttonSizes = ui.sizes.ToArray();
+            tablet.desktopKeys = ui.keys.ToArray();
+            tablet.desktopKeyLabels = ui.keyLabels.ToArray();
             tablet.pointer = pointer.transform;
             UdonSharpEditorUtility.CopyProxyToUdon(tablet);
 
@@ -828,7 +820,7 @@ namespace MmdWorld.EditorTools
                 foreach (var t in rootGo.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = walkthrough;
                 pointer.layer = walkthrough;
             }
-            return (tablet, title, status, seekBar);
+            return (tablet, ui);
         }
 
         /// <summary>uGUI の Image を1つ置く（位置と大きさはピクセル。親の中心が原点）。</summary>
@@ -891,41 +883,6 @@ namespace MmdWorld.EditorTools
 
             seekBar.width = width;
             seekBar.rangeFill = fill.transform;
-            seekBar.playhead = playhead;
-            seekBar.ticks = ticks;
-            UdonSharpEditorUtility.CopyProxyToUdon(seekBar);
-        }
-
-        /// <summary>
-        /// シークバーの見た目を作って seekBar に渡す。barRoot を parent の center（バーの中心）に置き、barRoot の原点をバーの左端にする。
-        /// 自分の側は -Z。奥から 溝 → 範囲の帯 → 目盛り → 再生位置 の順に手前へ重ねる。
-        /// </summary>
-        static void BuildSeekBar(DanceSeekBar seekBar, Transform barRoot, Transform parent, Vector3 center, float width, float height, float depth, int tickCount)
-        {
-            barRoot.SetParent(parent, false);
-            barRoot.localPosition = center - new Vector3(width * 0.5f, 0f, 0f);
-
-            Transform Part(string name, Color color, Vector3 position, Vector3 scale)
-            {
-                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                go.name = name;
-                Object.DestroyImmediate(go.GetComponent<Collider>());
-                go.transform.SetParent(barRoot, false);
-                go.transform.localPosition = position;
-                go.transform.localScale = scale;
-                go.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/SeekBar_" + name.Split('_')[0] + ".mat", color);
-                return go.transform;
-            }
-
-            Part("Track", new Color(0.22f, 0.22f, 0.26f), new Vector3(width * 0.5f, 0f, 0f), new Vector3(width, height, depth));
-            var fill = Part("Range", new Color(0.25f, 0.6f, 0.95f), new Vector3(width * 0.5f, 0f, -depth * 0.25f), new Vector3(width, height * 0.8f, depth));
-            var ticks = new Transform[tickCount];
-            for (int i = 0; i < tickCount; i++)
-                ticks[i] = Part("Tick_" + i, new Color(0.85f, 0.85f, 0.9f), new Vector3(0f, 0f, -depth * 0.5f), new Vector3(width * 0.003f, height * 1.3f, depth));
-            var playhead = Part("Playhead", new Color(1f, 0.6f, 0.1f), new Vector3(0f, 0f, -depth * 0.75f), new Vector3(width * 0.008f, height * 2.2f, depth));
-
-            seekBar.width = width;
-            seekBar.rangeFill = fill;
             seekBar.playhead = playhead;
             seekBar.ticks = ticks;
             UdonSharpEditorUtility.CopyProxyToUdon(seekBar);

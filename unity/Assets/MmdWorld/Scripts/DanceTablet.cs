@@ -108,6 +108,7 @@ namespace MmdWorld
         /// </summary>
         public override void InputGrab(bool value, UdonInputEventArgs args)
         {
+            if (logTouch && !value) Debug.Log("[MmdWorld] タブレット: 離した");
             if (!_vr || !value) return;
             bool right = args.handType == HandType.RIGHT;
             float now = Time.time;
@@ -115,6 +116,7 @@ namespace MmdWorld
             int grips = now - last > doubleGripSeconds ? 1 : (right ? _gripsRight : _gripsLeft) + 1;
             if (right) { _lastGripRight = now; _gripsRight = grips; }
             else { _lastGripLeft = now; _gripsLeft = grips; }
+            if (logTouch) Debug.Log("[MmdWorld] タブレット: " + (right ? "右" : "左") + "手で握った（" + grips + " 回目）");
             if (grips == 2)
             {
                 if (_visible && !_fixed && _rightHand == right)

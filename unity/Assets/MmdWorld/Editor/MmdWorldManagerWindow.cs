@@ -114,7 +114,14 @@ namespace MmdWorld.EditorTools
                         }
                     }
                     var audio = (AudioClip)EditorGUILayout.ObjectField("音声", song.audio, typeof(AudioClip), false);
-                    float offset = EditorGUILayout.FloatField(new GUIContent("音のずれ（秒）", "音をモーションより何秒遅らせるか。音が早いときは +"), song.audioOffset);
+                    float offset;
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        offset = EditorGUILayout.FloatField(new GUIContent("音のずれ（秒）", "音をモーションより何秒遅らせるか。音が早いときは +"), song.audioOffset);
+                        using (new EditorGUI.DisabledScope(song.audio == null))
+                            if (GUILayout.Button(new GUIContent("合わせる…", "音声の波形とモーションの動きを並べて見ながら、再生して合わせるウィンドウを開く"), GUILayout.Width(72)))
+                                AudioOffsetWindow.Open(song);
+                    }
                     float step = EditorGUILayout.FloatField(new GUIContent("区切りの間隔（秒）", "シーク・範囲再生・途中からの参加の区切り。細かいほどステーション用の Controller が増える。区切りの時刻を直接並べたいときは曲のアセットの seekPoints に入れる"), song.seekStep);
                     if (EditorGUI.EndChangeCheck())
                     {

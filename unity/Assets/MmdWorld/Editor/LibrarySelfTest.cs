@@ -125,6 +125,10 @@ namespace MmdWorld.EditorTools
                 MmdWorldLibrary.Move(song, -1);
                 Check(MmdWorldLibrary.Songs().IndexOf(song) == before - 1, "▲で1つ前へ動く");
 
+                // 音のずれを合わせるウィンドウが使う、モーションの動きの大きさ
+                var activity = AudioOffsetWindow.MotionActivity(song.motion);
+                Check(activity.Length > 60 * 60 && activity.Max() <= 1f && activity.Count(v => v > 0.3f) > 100, $"モーションの動きの大きさが読める（{activity.Length} 個、山 {activity.Count(v => v > 0.3f)} 個）");
+
                 // 書き出しと読み込み: JSON に書いてから題名・音のずれ・立ち位置を変え、読み込むと元に戻る（同じモーションの曲に書き戻す）
                 string json = Path.Combine(Path.GetTempPath(), "mmdworld-selftest.json");
                 song.audioOffset = 0.12f;

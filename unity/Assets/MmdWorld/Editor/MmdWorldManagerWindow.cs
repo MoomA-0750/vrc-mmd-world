@@ -57,6 +57,7 @@ namespace MmdWorld.EditorTools
         {
             EditorGUILayout.LabelField($"曲（{songs.Count}）", EditorStyles.boldLabel);
             DrawDropArea();
+            DrawExport(songs);
 
             for (int i = 0; i < songs.Count; i++)
             {
@@ -140,6 +141,49 @@ namespace MmdWorld.EditorTools
                 }
             }
             if (GUI.changed) AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>曲の一覧の書き出し・読み込み（JSON は設定だけ、.unitypackage は素材ごと）。</summary>
+        void DrawExport(List<DanceSong> songs)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUI.DisabledScope(songs.Count == 0))
+                {
+                    if (GUILayout.Button(new GUIContent("JSON に書き出す", "題名・モーション・音声・音のずれ・立ち位置のずれなどを書き出す。素材はパスと GUID で指すだけ")))
+                    {
+                        string path = EditorUtility.SaveFilePanel("曲の一覧を書き出す", "", "mmd-world-songs.json", "json");
+                        if (!string.IsNullOrEmpty(path))
+                        {
+                            MmdWorldExport.ExportJson(path);
+                            Show($"{songs.Count} 曲を書き出しました: {path}", MessageType.Info);
+                        }
+                        GUIUtility.ExitGUI();
+                    }
+                    if (GUILayout.Button(new GUIContent("素材ごと書き出す", "曲の設定とモーション・音声を .unitypackage にまとめる。別のプロジェクトで Import すれば曲がそのまま入る（スクリプトは入れない）")))
+                    {
+                        string path = EditorUtility.SaveFilePanel("曲を素材ごと書き出す", "", "mmd-world-songs.unitypackage", "unitypackage");
+                        if (!string.IsNullOrEmpty(path))
+                        {
+                            var assets = MmdWorldExport.ExportPackage(path);
+                            Show($"{songs.Count} 曲（{assets.Count} ファイル）を書き出しました: {path}", MessageType.Info);
+                        }
+                        GUIUtility.ExitGUI();
+                    }
+                }
+                if (GUILayout.Button(new GUIContent("JSON から読み込む", "書き出した JSON の設定を戻す。同じモーションの曲は書き戻し、無ければ JSON が指す素材で曲を作る")))
+                {
+                    string path = EditorUtility.OpenFilePanel("曲の一覧を読み込む", "", "json");
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        var r = MmdWorldExport.ImportJson(path);
+                        Show($"読み込みました: 足した曲 {r.added}、書き戻した曲 {r.updated}" +
+                             (r.missing.Count > 0 ? $"\n見つからなかった素材 {r.missing.Count} 件:\n" + string.Join("\n", r.missing.Take(10)) : ""),
+                             r.missing.Count > 0 ? MessageType.Warning : MessageType.Info);
+                    }
+                    GUIUtility.ExitGUI();
+                }
+            }
         }
 
         void DrawDropArea()

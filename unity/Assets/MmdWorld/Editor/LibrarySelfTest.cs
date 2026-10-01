@@ -125,6 +125,32 @@ namespace MmdWorld.EditorTools
                 MmdWorldLibrary.Move(song, -1);
                 Check(MmdWorldLibrary.Songs().IndexOf(song) == before - 1, "▲で1つ前へ動く");
 
+                // 書き出しと読み込み: JSON に書いてから題名・音のずれ・立ち位置を変え、読み込むと元に戻る（同じモーションの曲に書き戻す）
+                string json = Path.Combine(Path.GetTempPath(), "mmdworld-selftest.json");
+                song.audioOffset = 0.12f;
+                song.partOffsets = new List<Vector3> { Vector3.zero, new Vector3(1f, 0f, 2f) };
+                EditorUtility.SetDirty(song);
+                MmdWorldExport.ExportJson(json);
+                int songsBeforeImport = MmdWorldLibrary.Songs().Count;
+                song.title = "変えた題名";
+                song.audioOffset = 9f;
+                song.partOffsets = new List<Vector3>();
+                var imported = MmdWorldExport.ImportJson(json);
+                Check(imported.added == 0 && imported.updated == songsBeforeImport && imported.missing.Count == 0 && MmdWorldLibrary.Songs().Count == songsBeforeImport,
+                      $"JSON から読み込むと、同じモーションの曲に書き戻す（足した {imported.added}・書き戻した {imported.updated}・見つからない {imported.missing.Count}）");
+                Check(song.title == "自己テスト/曲:1" && Mathf.Approximately(song.audioOffset, 0.12f) && song.partOffsets.Count == 2 && song.partOffsets[1] == new Vector3(1f, 0f, 2f)
+                      && song.parts.Count == 2 && song.face != null && song.audio != null, "JSON の往復で題名・音のずれ・立ち位置・パート・表情・音声が戻る");
+                File.Delete(json);
+                string package = Path.Combine(Path.GetTempPath(), "mmdworld-selftest.unitypackage");
+                var packed = MmdWorldExport.ExportPackage(package);
+                Check(File.Exists(package) && packed.Contains(AssetDatabase.GetAssetPath(song)) && packed.Contains(AssetDatabase.GetAssetPath(song.motion))
+                      && packed.Contains(AssetDatabase.GetAssetPath(song.audio)) && !packed.Any(p => p.EndsWith(".cs") || p.EndsWith(".dll")),
+                      $"素材ごとの書き出しに、曲の設定・モーション・音声が入り、スクリプトは入らない（{packed.Count} ファイル）");
+                File.Delete(package);
+                song.audioOffset = 0f;
+                song.partOffsets = new List<Vector3>();
+                EditorUtility.SetDirty(song);
+
                 var mannequin = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MmdWorld/Generated/Mannequin.prefab");
                 var mc = MmdWorldLibrary.CheckAvatar(mannequin, new[] { song });
                 Check(mc.IsHumanoid && !mc.HasFaceMesh && mc.MorphsWanted > 20, $"人形は Humanoid・表情のメッシュ無し・曲の表情は {mc.MorphsWanted} 個");

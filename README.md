@@ -171,7 +171,7 @@ VR でしか起きないこと（握ってタブレットを出す・指で押�
 ```sh
 tools/vrsim-hmd/install.sh            # 仮想 HMD をビルドして SteamVR に登録し、SteamVR の設定を切り替える（元の設定は steamvr.vrsettings.before-vmt）
 python vrsim.py setup                 # 初回だけ（Windows 機で）: VMT の Room Matrix を設定する（無いと VMT が動かない）
-tools/vrsim-hmd/install.sh restore    # 実機の VR に戻す
+tools/vrsim-hmd/install.sh restore    # 実機の VR に戻す（設定を戻し、仮想 HMD と VMT の登録を外す）
 ```
 
 流れ: SteamVR を起動 → 開いている Unity の `Temp/MmdCommand.txt` に `BuildAndTestVR` を書く（VR で1つ起動し、タブレットの指先の位置と握った回数をログに出す）→ `vrsim.py play 台本` を流し、VRChat のログ（`[MmdWorld] タブレット:`）とヘッドセットの窓（vrcompositor の「Headset Window」）で確かめる。

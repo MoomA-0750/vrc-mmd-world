@@ -68,6 +68,8 @@ namespace MmdWorld
         public float releaseDistance = 0.025f;
         [Tooltip("指先が面からこれだけ手前まで来たら、ボタンを明るくする（メートル）")]
         public float hoverDistance = 0.04f;
+        [Tooltip("指先が1フレームでこれより大きく動いたら、体が瞬間移動したとみなして押さない（タブレットから見た長さ）")]
+        public float maxTipStep = 0.15f;
         [Tooltip("VR で出している間、指先の位置（タブレットから見た位置）を1秒ごとにログに出す（仮想の VR で確かめるときだけ。DevCommands の BuildAndTestVR が入れる）")]
         public bool logTouch;
 
@@ -89,6 +91,10 @@ namespace MmdWorld
         Vector3 _anchorPosition;
         Quaternion _anchorRotation;
         float _nextTouchLog;
+        /// <summary>前のフレームの指先（タブレットから見た位置）と、押せる状態か（面の手前に出たら押せる。押した・瞬間移動したら押せない）</summary>
+        Vector3 _lastTip;
+        bool _hadTip;
+        bool _armed;
         const string GripAxisLeft = "Oculus_CrossPlatform_PrimaryHandTrigger";
         const string GripAxisRight = "Oculus_CrossPlatform_SecondaryHandTrigger";
         /// <summary>グリップの軸が読めたか（読めたら InputGrab は使わない）と、いま握っているか</summary>
@@ -248,6 +254,8 @@ namespace MmdWorld
         void SetVisible(bool visible)
         {
             _visible = visible;
+            _hadTip = false;
+            _armed = false;
             if (body != null) body.SetActive(visible);
             if (pointer != null) pointer.gameObject.SetActive(visible && _vr);
             if (_pressed != null)
@@ -295,6 +303,12 @@ namespace MmdWorld
         /// <summary>指先（タブレットのローカル座標）がボタンの面を押し込んだら押す。離れるまでは続けて押さない。</summary>
         void TouchButtons(Vector3 p)
         {
+            // 押せるのは、面の手前に出ていた指先が奥へ入ったときだけ（_armed）。押したら、また手前に戻すまで押さない。
+            // 体が瞬間移動したとき（ステーションに座った・降りた）は、指先が面の奥にあるままボタンを横切っても押さない
+            if (_hadTip && (p - _lastTip).sqrMagnitude > maxTipStep * maxTipStep) _armed = false;
+            else if (p.z < -pressDepth) _armed = true;
+            _lastTip = p;
+            _hadTip = true;
             for (int i = 0; i < buttons.Length; i++)
             {
                 var button = buttons[i];
@@ -305,9 +319,10 @@ namespace MmdWorld
                 // 面は z = 0（自分の側が -Z）。面を越えて奥へ入ったら押す
                 if (!_pressed[i])
                 {
-                    if (over && p.z >= -pressDepth && p.z < 0.05f)
+                    if (_armed && over && p.z >= -pressDepth && p.z < 0.05f)
                     {
                         _pressed[i] = true;
+                        _armed = false;
                         Press(i);
                     }
                 }

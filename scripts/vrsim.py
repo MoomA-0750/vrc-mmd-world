@@ -6,6 +6,7 @@
 
 座標は Unity と同じ左手系（+Y が上、+Z が前、メートル）。向きは yaw pitch roll（度）。
 
+  python vrsim.py setup                        初回だけ: VMT の Room Matrix を単位行列にする
   python vrsim.py stand                        頭を 1.5m、両手を体の前に置く
   python vrsim.py pose head|left|right X Y Z [YAW PITCH ROLL]
   python vrsim.py grip left|right [回数]        グリップを握って離す（回数ぶん、0.15 秒おき）
@@ -124,6 +125,9 @@ def run(words):
         stick(rest[0], *f)
     elif cmd == "wait":
         wait(float(rest[0]))
+    elif cmd == "setup":
+        # VMT は Room Matrix が無いと動かない（/VMT/Out/Unavailable）。null の HMD のルームはそのままなので単位行列にする（setting.json に保存される）
+        send("/VMT/SetRoomMatrix", 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
     elif cmd == "reset":
         send("/VMT/Reset")
     elif cmd == "play":

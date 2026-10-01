@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 仮想の HMD のドライバを Windows 機でビルドし、SteamVR に登録して、VR の確認用の設定にする。
 #   tools/vrsim-hmd/install.sh          ビルド・登録・設定（SteamVR と VRChat は止める）
-#   tools/vrsim-hmd/install.sh restore  SteamVR の設定を入れる前（実機の VR）に戻す
+#   tools/vrsim-hmd/install.sh restore  SteamVR の設定を入れる前（実機の VR）に戻し、仮想 HMD と VMT の登録を外す
 # 前提: Windows 機に Visual Studio Build Tools（C++）と VMT（C:\vmt_driver）。詳しくは README の「仮想の VR で確かめる」
 set -euo pipefail
 # ssh の標準入力で pwsh に渡す部分は日本語が化けるので、英語で書く
@@ -18,6 +18,11 @@ if [ "${1:-}" = restore ]; then
 Get-Process VRChat,vrmonitor,vrserver,vrcompositor,vrdashboard,vrwebhelper -EA SilentlyContinue | Stop-Process -Force
 $cfg = "C:/Program Files (x86)/Steam/config/steamvr.vrsettings"
 Copy-Item "$cfg.before-vmt" $cfg -Force
+# 仮想 HMD は常に有効（alwaysActivate）なので、登録したままだと実機より先に HMD に選ばれることがある。VMT も偽のコントローラーを足すので外す
+$reg = "C:/Program Files (x86)/Steam/steamapps/common/SteamVR/bin/win64/vrpathreg.exe"
+& $reg removedriver 'C:/mmdhmd'
+& $reg removedriver 'C:\vmt_driver\vmt'
+& $reg show
 "restored SteamVR settings"
 PS
   exit 0
@@ -45,6 +50,7 @@ if (Test-Path '$WIN_DRIVER') { Remove-Item -Recurse -Force '$WIN_DRIVER' }
 Copy-Item -Recurse mmdhmd '$WIN_DRIVER'
 \$reg = "C:/Program Files (x86)/Steam/steamapps/common/SteamVR/bin/win64/vrpathreg.exe"
 & \$reg adddriver '$WIN_DRIVER'
+& \$reg adddriver 'C:\\vmt_driver\\vmt'
 
 \$cfg = "C:/Program Files (x86)/Steam/config/steamvr.vrsettings"
 if (-not (Test-Path "\$cfg.before-vmt")) { Copy-Item \$cfg "\$cfg.before-vmt" }

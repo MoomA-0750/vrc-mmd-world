@@ -10,6 +10,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -151,6 +152,7 @@ private:
 	std::thread receiver_, updater_;
 	SOCKET socket_ = INVALID_SOCKET;
 	std::mutex mutex_;
+	std::atomic<int> received_{0};
 	// 届くまでは、原点の 1.6m 上で前を向いて立っていることにする
 	float pose_[7] = {0.0f, 1.6f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 
@@ -184,8 +186,17 @@ private:
 			int n = recv(socket_, reinterpret_cast<char *>(buffer), sizeof(buffer), 0);
 			if (n == static_cast<int>(sizeof(float) * 7))
 			{
-				std::lock_guard<std::mutex> lock(mutex_);
-				std::memcpy(pose_, buffer, sizeof(pose_));
+				{
+					std::lock_guard<std::mutex> lock(mutex_);
+					std::memcpy(pose_, buffer, sizeof(pose_));
+				}
+				// 届いているかをログで確かめられるように、最初と、その後は 300 回に1回出す
+				if (received_++ % 300 == 0)
+				{
+					char text[160];
+					std::snprintf(text, sizeof(text), "mmdhmd: pose %d: %.2f %.2f %.2f / %.3f %.3f %.3f %.3f", received_.load(), buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6]);
+					Log(text);
+				}
 			}
 			else if (n < 0)
 			{

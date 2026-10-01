@@ -26,6 +26,7 @@ ADDR = ("127.0.0.1", 39570)
 HMD_ADDR = ("127.0.0.1", 39580)
 DEVICES = {"left": (1, 5), "right": (2, 6)}  # index, enable（1: トラッカー、5/6: Index 互換の左右）
 GRIP = 1  # Index 互換のとき、TriggerIndex 1 が /input/grip/value
+GRIP_FORCE = 2  # TriggerIndex 2 が /input/grip/force（Index は握る判定に強さも使う）
 _sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 _pose = {"head": [0, 1.5, 0, 0, 0, 0], "left": [-0.2, 1.1, 0.3, 0, 0, 0], "right": [0.2, 1.1, 0.3, 0, 0, 0]}
 
@@ -57,8 +58,13 @@ def quat(yaw, pitch, roll):
     return (cy * sx * cz + sy * cx * sz, sy * cx * cz - cy * sx * sz, cy * cx * sz - sy * sx * cz, cy * cx * cz + sy * sx * sz)
 
 
+# このプロセスで置いたもの。wait などで送り直すのはこれだけ（コマンドごとに別のプロセスなので、既定の姿勢を送り直すと前のコマンドで置いた姿勢を戻してしまう）
+_placed = set()
+
+
 def pose(name, x, y, z, yaw=0.0, pitch=0.0, roll=0.0):
     _pose[name] = [x, y, z, yaw, pitch, roll]
+    _placed.add(name)
     qx, qy, qz, qw = quat(yaw, pitch, roll)
     if name == "head":
         # OpenVR の右手系へ（Z を反転。回転は X と Y の成分の符号が変わる）
@@ -69,8 +75,8 @@ def pose(name, x, y, z, yaw=0.0, pitch=0.0, roll=0.0):
 
 
 def refresh():
-    for name, p in _pose.items():
-        pose(name, *p)
+    for name in list(_placed):
+        pose(name, *_pose[name])
 
 
 def wait(seconds):
@@ -96,9 +102,11 @@ def grip(name, count=1):
     index = DEVICES[name][0]
     for _ in range(count):
         send("/VMT/Input/Trigger", index, GRIP, 0.0, 1.0)
-        wait(0.08)
+        send("/VMT/Input/Trigger", index, GRIP_FORCE, 0.0, 1.0)
+        wait(0.1)
+        send("/VMT/Input/Trigger", index, GRIP_FORCE, 0.0, 0.0)
         send("/VMT/Input/Trigger", index, GRIP, 0.0, 0.0)
-        wait(0.07)
+        wait(0.1)
 
 
 def trigger(name):
@@ -119,7 +127,8 @@ def run(words):
     cmd, rest = words[0], words[1:]
     f = [float(v) for v in rest[1:]] if rest else []
     if cmd == "stand":
-        refresh()
+        for name, p in list(_pose.items()):
+            pose(name, *p)
     elif cmd == "pose":
         pose(rest[0], *f)
     elif cmd == "move":

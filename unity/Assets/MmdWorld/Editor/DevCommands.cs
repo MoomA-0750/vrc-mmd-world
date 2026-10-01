@@ -111,6 +111,9 @@ namespace MmdWorld.EditorTools
             // 自動確認のときは2つ起動し、1つ目が踊り、2つ目が客席から見る
             SetVrchatSetting("NumClients", autoTest ? 2 : 1);
 
+            // VR で確かめるビルドでは、タブレットの指先の位置をログに出す（終わったら戻す）
+            SetTabletTouchLog(vr);
+
             // SDK のパネルが開いていないと Builder を取れない
             EditorApplication.ExecuteMenuItem("VRChat SDK/Show Control Panel");
             if (!VRCSdkControlPanel.TryGetBuilder<IVRCSdkWorldBuilderApi>(out var builder))
@@ -174,7 +177,19 @@ namespace MmdWorld.EditorTools
             {
                 // SDK はビルドのときにシーンを読み込み直すので、ビルド前の参照は切れている。今のシーンから探し直して後片付けする
                 if (autoTest) CleanUpAutoTest();
+                if (vr) SetTabletTouchLog(false);
             }
+        }
+
+        static void SetTabletTouchLog(bool on)
+        {
+            var tablet = UnityEngine.Object.FindObjectsOfType<DanceTablet>(true).FirstOrDefault();
+            if (tablet == null || tablet.logTouch == on) return;
+            tablet.logTouch = on;
+            UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(tablet);
+            var scene = EditorSceneManager.GetActiveScene();
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
         }
 
         /// <summary>

@@ -65,6 +65,8 @@ namespace MmdWorld
         public float releaseDistance = 0.025f;
         [Tooltip("指先が面からこれだけ手前まで来たら、ボタンを明るくする（メートル）")]
         public float hoverDistance = 0.04f;
+        [Tooltip("VR で出している間、指先の位置（タブレットから見た位置）を1秒ごとにログに出す（仮想の VR で確かめるときだけ。DevCommands の BuildAndTestVR が入れる）")]
+        public bool logTouch;
 
         VRCPlayerApi _local;
         bool _vr;
@@ -79,6 +81,7 @@ namespace MmdWorld
         bool _rightHand;
         /// <summary>ワールドに止めて置いているか（3回握ったとき）</summary>
         bool _fixed;
+        float _nextTouchLog;
         float _lastGripLeft = -10f;
         float _lastGripRight = -10f;
         /// <summary>続けて握った回数</summary>
@@ -227,7 +230,13 @@ namespace MmdWorld
             var finger = _local.GetTrackingData(PressingRight() ? VRCPlayerApi.TrackingDataType.RightHand : VRCPlayerApi.TrackingDataType.LeftHand);
             var tip = finger.position + finger.rotation * fingerOffset;
             if (pointer != null) pointer.position = tip;
-            TouchButtons(transform.InverseTransformPoint(tip));
+            var local = transform.InverseTransformPoint(tip);
+            if (logTouch && Time.time >= _nextTouchLog)
+            {
+                _nextTouchLog = Time.time + 1f;
+                Debug.Log("[MmdWorld] タブレット: 指先 " + local.ToString("F3") + (_fixed ? "（ワールドに置いた）" : "（手に持っている）") + " 手 " + finger.position.ToString("F3") + " 板 " + transform.position.ToString("F3"));
+            }
+            TouchButtons(local);
         }
 
         /// <summary>指先（タブレットのローカル座標）がボタンの面を押し込んだら押す。離れるまでは続けて押さない。</summary>

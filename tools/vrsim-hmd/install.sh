@@ -4,6 +4,7 @@
 #   tools/vrsim-hmd/install.sh restore  SteamVR の設定を入れる前（実機の VR）に戻す
 # 前提: Windows 機に Visual Studio Build Tools（C++）と VMT（C:\vmt_driver）。詳しくは README の「仮想の VR で確かめる」
 set -euo pipefail
+# ssh の標準入力で pwsh に渡す部分は日本語が化けるので、英語で書く
 HERE=$(cd "$(dirname "$0")" && pwd)
 source "$HERE/../../scripts/win.env"
 : "${HOST:?}"
@@ -17,7 +18,7 @@ if [ "${1:-}" = restore ]; then
 Get-Process VRChat,vrmonitor,vrserver,vrcompositor,vrdashboard,vrwebhelper -EA SilentlyContinue | Stop-Process -Force
 $cfg = "C:/Program Files (x86)/Steam/config/steamvr.vrsettings"
 Copy-Item "$cfg.before-vmt" $cfg -Force
-"SteamVR の設定を戻した"
+"restored SteamVR settings"
 PS
   exit 0
 fi
@@ -28,17 +29,17 @@ if [ ! -s "$HERE/include/openvr_driver.h" ]; then
   gh api "repos/ValveSoftware/openvr/contents/headers/openvr_driver.h?ref=$OPENVR_TAG" -H "Accept: application/vnd.github.raw" > "$HERE/include/openvr_driver.h"
 fi
 ssh "$HOST" "pwsh -NoProfile -Command \"New-Item -ItemType Directory -Force $WIN_SRC | Out-Null\""
-scp -q -r "$HERE/src" "$HERE/include" "$HERE/mmdhmd" "$HOST:$WIN_SRC/"
+scp -q -r "$HERE/src" "$HERE/include" "$HERE/mmdhmd" "$HERE/build.bat" "$HOST:$WIN_SRC/"
 
 ps <<PS
 \$ErrorActionPreference = "Stop"
 Get-Process VRChat,vrmonitor,vrserver,vrcompositor,vrdashboard,vrwebhelper -EA SilentlyContinue | Stop-Process -Force
 \$vs = & "\${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-if (-not \$vs) { throw "Visual Studio Build Tools（C++）が無い" }
+if (-not \$vs) { throw "Visual Studio Build Tools (C++) not found" }
 Set-Location '$WIN_SRC'
-New-Item -ItemType Directory -Force mmdhmd/bin/win64 | Out-Null
-cmd /c "\`"\$vs\\VC\\Auxiliary\\Build\\vcvars64.bat\`" >nul && cl /nologo /LD /EHsc /O2 /std:c++17 /utf-8 /Iinclude src\\driver.cpp /Fe:mmdhmd\\bin\\win64\\driver_mmdhmd.dll /Fo:mmdhmd\\bin\\win64\\ ws2_32.lib"
-if (\$LASTEXITCODE -ne 0) { throw "ビルドに失敗" }
+\$env:VSPATH = \$vs
+cmd /c build.bat
+if (\$LASTEXITCODE -ne 0) { throw "build failed" }
 Start-Sleep 2
 if (Test-Path '$WIN_DRIVER') { Remove-Item -Recurse -Force '$WIN_DRIVER' }
 Copy-Item -Recurse mmdhmd '$WIN_DRIVER'
@@ -58,5 +59,5 @@ if (\$j.ContainsKey("driver_null")) { \$j["driver_null"]["enable"] = \$false }
 \$p["turnOffScreensTimeout"] = 86400.0
 \$j["power"] = \$p
 \$j | ConvertTo-Json -Depth 20 | Set-Content \$cfg -Encoding utf8NoBOM
-"入れた: \$((Get-Item '$WIN_DRIVER/bin/win64/driver_mmdhmd.dll').Length) バイト"
+"installed: \$((Get-Item '$WIN_DRIVER/bin/win64/driver_mmdhmd.dll').Length) bytes"
 PS

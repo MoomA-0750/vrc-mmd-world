@@ -95,6 +95,23 @@ namespace MmdWorld.EditorTools
                         partsChanged = true;
                         if (p < parts.Count) parts[p] = picked; else parts.Add(picked);
                     }
+                    // 複数人のモーションの立ち位置のずれ（パートが2つ以上のときだけ）。0 番目が1人目（モーション）
+                    var offsets = new List<Vector3>(song.partOffsets ?? new List<Vector3>());
+                    bool offsetsChanged = false;
+                    if (parts.Count(c => c != null) > 0)
+                    {
+                        EditorGUILayout.LabelField(new GUIContent("立ち位置のずれ（m）", "配布物の立ち位置がきれいに合っていないときに直す。右: 踊る人から見て右が +、前: 客席の方が +"), EditorStyles.miniBoldLabel);
+                        int partCount = 1 + parts.Count(c => c != null);
+                        for (int p = 0; p < partCount; p++)
+                        {
+                            var current = p < offsets.Count ? offsets[p] : Vector3.zero;
+                            var v = EditorGUILayout.Vector2Field($"　{p + 1}人目（右・前）", new Vector2(current.x, current.z));
+                            if (Mathf.Approximately(v.x, current.x) && Mathf.Approximately(v.y, current.z)) continue;
+                            offsetsChanged = true;
+                            while (offsets.Count <= p) offsets.Add(Vector3.zero);
+                            offsets[p] = new Vector3(v.x, 0f, v.y);
+                        }
+                    }
                     var audio = (AudioClip)EditorGUILayout.ObjectField("音声", song.audio, typeof(AudioClip), false);
                     float offset = EditorGUILayout.FloatField(new GUIContent("音のずれ（秒）", "音をモーションより何秒遅らせるか。音が早いときは +"), song.audioOffset);
                     float step = EditorGUILayout.FloatField(new GUIContent("区切りの間隔（秒）", "シーク・範囲再生・途中からの参加の区切り。細かいほどステーション用の Controller が増える。区切りの時刻を直接並べたいときは曲のアセットの seekPoints に入れる"), song.seekStep);
@@ -104,6 +121,7 @@ namespace MmdWorld.EditorTools
                         song.motion = motion;
                         song.face = face;
                         if (partsChanged) song.parts = parts.Where(c => c != null).ToList();
+                        if (offsetsChanged) song.partOffsets = offsets;
                         song.audio = audio;
                         song.audioOffset = offset;
                         song.seekStep = Mathf.Max(2f, step);

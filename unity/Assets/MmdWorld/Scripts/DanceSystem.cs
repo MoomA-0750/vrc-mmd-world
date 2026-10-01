@@ -102,6 +102,8 @@ namespace MmdWorld
         public float[] trackLengths;
         [Tooltip("複数人のモーションの立ち位置の原点（ステージの中央）。パートが2つ以上の曲では、全員この点からの位置で踊る")]
         public Transform stageOrigin;
+        [Tooltip("トラックごとの立ち位置のずれ（メートル。x: 踊る人から見て右、z: 前＝客席の方）。複数人のモーションで、配布物の立ち位置が合っていないときに直す")]
+        public Vector3[] trackOffsets;
         [Tooltip("曲ごとの、区切りの始まりの位置と数")]
         public int[] segmentStart;
         public int[] segmentCount;
@@ -145,6 +147,8 @@ namespace MmdWorld
         /// <summary>シークするたびに増やす。受け取った側は、これが変わったら踊り手を降ろして座り直させる</summary>
         [UdonSynced] int _seekSeq;
 
+        /// <summary>お手本の、組み立てたときの置き場所</summary>
+        Vector3[] _previewBase;
         VRCStation _localStation;
         /// <summary>トラッキングを戻すために座り直したステーション（restoreSeconds 後に降りる）</summary>
         VRCStation _restoreStation;
@@ -171,6 +175,10 @@ namespace MmdWorld
         void Start()
         {
             if (audioSource != null) _audioVolume = audioSource.volume;
+            // お手本の置き場所。複数人のモーションでは、ここに立ち位置のずれを足す
+            _previewBase = new Vector3[previewDancers.Length];
+            for (int i = 0; i < previewDancers.Length; i++)
+                if (previewDancers[i] != null) _previewBase[i] = previewDancers[i].transform.position;
             ShowIdle();
             ApplyInPlace();
             if (autoTestDelay > 0f) SendCustomEventDelayedSeconds(nameof(_AutoTest), autoTestDelay);
@@ -916,11 +924,14 @@ namespace MmdWorld
             if (_previewStarted) return;
             _previewStarted = true;
             // お手本は、先頭から順にパートを踊る（複数人のモーションなら、お手本の並びで隊形が分かる）
+            bool formation = IsFormation(song);
             for (int i = 0; i < previewDancers.Length; i++)
             {
                 var dancer = previewDancers[i];
                 if (dancer == null) continue;
                 int track = TrackFor(song, i);
+                if (_previewBase != null && i < _previewBase.Length)
+                    dancer.transform.position = _previewBase[i] + (formation ? dancer.transform.rotation * TrackOffset(track) : Vector3.zero);
                 float trackLength = trackLengths != null && track < trackLengths.Length ? trackLengths[track] : length;
                 dancer.Play("Track" + track, 0, trackLength > 0f ? Mathf.Clamp01(t / trackLength) : 0f);
             }
@@ -1034,10 +1045,11 @@ namespace MmdWorld
                 if (dancer == null || station == null) continue;
                 // 軌跡は目の高さを 1 とした値なので、踊っている人のアバターの目の高さを掛ける。「その場で踊る」なら軌跡では動かさない
                 float eye = dancer.GetAvatarEyeHeightAsMeters();
-                var along = slot.IsInPlace() ? Vector3.zero : TrajectoryAt(TrackFor(song, s), t) * eye;
+                int track = TrackFor(song, s);
+                var along = slot.IsInPlace() ? Vector3.zero : TrajectoryAt(track, t) * eye;
                 // 複数人のモーションは、ステージの中央からの位置（パートに入っている立ち位置）で踊る。1人の曲は枠の位置から
                 if (formation && !slot.IsInPlace() && stageOrigin != null && station.parent != null)
-                    along = station.parent.InverseTransformPoint(stageOrigin.TransformPoint(along));
+                    along = station.parent.InverseTransformPoint(stageOrigin.TransformPoint(along + TrackOffset(track)));
                 // 踊っている人がスティック・WASD で動かした分を足す
                 station.transform.localPosition = along + slot.GetDrive();
                 // 向きはステーションのクリップに入っているので回さない（回すと VR では視点も回る）
@@ -1054,6 +1066,12 @@ namespace MmdWorld
             float a = f - i;
             int k = trajStart[track] + i;
             return new Vector3(Mathf.Lerp(trajX[k], trajX[k + 1], a), 0f, Mathf.Lerp(trajZ[k], trajZ[k + 1], a));
+        }
+
+        /// <summary>トラックの立ち位置のずれ（ステージの原点の向きで、メートル）。</summary>
+        Vector3 TrackOffset(int track)
+        {
+            return trackOffsets != null && track >= 0 && track < trackOffsets.Length ? trackOffsets[track] : Vector3.zero;
         }
 
         /// <summary>複数人のモーション（パートが2つ以上）の曲か。</summary>
@@ -1225,8 +1243,10 @@ namespace MmdWorld
                 if (index < 0 || index >= SlotAvatarCount() || slotAvatars[index] == null) continue;
                 var avatar = slotAvatars[index];
                 if (!avatar.gameObject.activeInHierarchy) continue;
-                var anchor = playing && IsFormation(_songIndex) && stageOrigin != null ? stageOrigin : slot.transform.parent;
-                avatar.transform.SetPositionAndRotation(anchor.position, anchor.rotation);
+                bool formation = playing && IsFormation(_songIndex) && stageOrigin != null;
+                var anchor = formation ? stageOrigin : slot.transform.parent;
+                var offset = formation ? anchor.rotation * TrackOffset(TrackFor(_songIndex, s)) : Vector3.zero;
+                avatar.transform.SetPositionAndRotation(anchor.position + offset, anchor.rotation);
                 if (!playing)
                 {
                     avatar.Play("Idle", 0, 0f);

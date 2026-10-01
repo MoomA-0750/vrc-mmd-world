@@ -175,6 +175,9 @@ namespace MmdWorld.EditorTools
             system.songPartStart = songPartStart.ToArray();
             system.songPartCount = songPartCount.ToArray();
             system.trackNames = trackClips.Select(MmdWorldLibrary.PartName).ToArray();
+            // パートごとの立ち位置のずれ（複数人のモーションだけ使う）
+            system.trackOffsets = songs.SelectMany(sg => Enumerable.Range(0, MmdWorldLibrary.Parts(sg).Count)
+                .Select(p => sg.partOffsets != null && p < sg.partOffsets.Count ? new Vector3(sg.partOffsets[p].x, 0f, sg.partOffsets[p].z) : Vector3.zero)).ToArray();
             system.trackLengths = fullClips.Select(c => c.length).ToArray();
             system.trackSegmentStart = trackSegmentStart.ToArray();
             system.stageOrigin = BuildStageOrigin();

@@ -158,6 +158,32 @@ scripts/wincua.py shot out/screen.png   # Windows の画面を撮る
 
 batchmode と、画面付きの Unity を同時に開くことはできない（同じプロジェクトを2つ開けない）。
 
+## 仮想の VR で確かめる
+
+VR でしか起きないこと（握ってタブレットを出す・指で押す・踊りを体に乗せる Tracking Control・降りたあとトラッキングが戻るか）を、ヘッドセットなしで Windows 機で確かめる仕組み。
+
+- **頭**: 自作の仮想 HMD（`tools/vrsim-hmd`、SteamVR のドライバ）。頭の位置と向きを UDP（127.0.0.1:39580）で受け取る。SteamVR の null ドライバは頭が原点から動かせず、VMT を頭にする TrackingOverrides も効かなかったので作った
+- **手**: [Virtual Motion Tracker](https://github.com/gpsnmeajp/VirtualMotionTracker)（VMT）の Index 互換コントローラー。位置・グリップ・トリガー・スティックを OSC で送る
+- **台本**: `scripts/vrsim.py`（Windows 機で動かす）。`pose`・`move`・`grip`・`wait` などを1行ずつ書いた台本を `play` で流す（例: `scripts/vrsim/tablet-join-leave.txt`）
+
+準備（Windows 機に Visual Studio Build Tools の C++ と VMT を入れてから）:
+
+```sh
+tools/vrsim-hmd/install.sh            # 仮想 HMD をビルドして SteamVR に登録し、SteamVR の設定を切り替える（元の設定は steamvr.vrsettings.before-vmt）
+python vrsim.py setup                 # 初回だけ（Windows 機で）: VMT の Room Matrix を設定する（無いと VMT が動かない）
+tools/vrsim-hmd/install.sh restore    # 実機の VR に戻す
+```
+
+流れ: SteamVR を起動 → 開いている Unity の `Temp/MmdCommand.txt` に `BuildAndTestVR` を書く（VR で1つ起動し、タブレットの指先の位置と握った回数をログに出す）→ `vrsim.py play 台本` を流し、VRChat のログ（`[MmdWorld] タブレット:`）とヘッドセットの窓（vrcompositor の「Headset Window」）で確かめる。
+
+気をつけること:
+
+- SteamVR のダッシュボードが開いたままだと VRChat の画面が出ない（`vrcmd --hidedashboard` で閉じる）
+- `vrsim.py` はコマンドごとに別のプロセスなので、続けて動かすときは台本にまとめて `play` で流す（手の位置を送り続ける）
+- VRChat は、ワールドに入ったときの頭の高さでアバターの大きさを合わせるので、ワールドの中の長さは送った長さと違う（ログの「手」の位置で確かめる）
+
+これで見つけて直したこと: 座っている間は VRChat が InputGrab を送らない（グリップの軸を読むようにした）、踊っている間にワールドに置いたタブレットは体から離れていく（ステーションに止めるようにした）、降りるときの瞬間移動で指先がほかのボタンを押していた（手前から押し込んだときだけ押すようにした）。
+
 ## ライセンス
 
 MIT（`LICENSE`）。ただし次のものは除く。

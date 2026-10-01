@@ -1,0 +1,35 @@
+# 仮想の VR で、タブレットから再生・踊る・やめるを通す台本（scripts/vrsim.py play で流す）。
+# 押す位置は、頭 (0, 1.5, 0)・右手 (0.15, 1.3, 0.3) で3回握って置いたタブレットに合わせて、ログの指先の位置から割り出したもの。タブレットの配置を変えたら合わせ直す
+stand
+pose head 0 1.5 0 0 35 0
+pose left -0.3 1.0 0.1 0 0 0
+pose right 0.15 1.3 0.3 0 0 0
+wait 1.5
+grip right 3
+wait 1.5
+# ▶ 再生
+move right 0.132 1.247 0.269 0.5
+wait 0.5
+move right 0.201 1.155 0.407 1.2
+wait 0.5
+move right 0.15 1.3 0.3 0.6
+wait 1
+# 枠1
+move right 0.157 1.283 0.283 0.5
+wait 0.5
+move right 0.226 1.191 0.421 1.2
+wait 0.5
+move right 0.15 1.3 0.3 0.6
+wait 15
+grip right 3
+wait 1.5
+move right 0.157 1.283 0.283 0.5
+wait 0.5
+move right 0.226 1.191 0.421 1.2
+wait 0.5
+move right 0.15 1.3 0.3 0.6
+wait 8
+# 降りたあと、右手を目の前に上げてトラッキングが戻ったかを見る
+pose head 0 1.5 0 0 0 0
+move right 0.08 1.45 0.3 0.8
+wait 10

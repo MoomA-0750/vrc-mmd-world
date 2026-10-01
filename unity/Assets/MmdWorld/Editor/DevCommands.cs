@@ -83,6 +83,8 @@ namespace MmdWorld.EditorTools
                         var failures = LibrarySelfTest.Run();
                         foreach (var f in failures) Debug.LogError("[MmdWorld.SelfTest] 失敗: " + f);
                         Debug.Log($"[MmdWorld.SelfTest] 結果: {(failures.Count == 0 ? "成功" : "失敗 " + failures.Count + " 件")}");
+                        // ssh から読めるように、結果をファイルにも書く（開いているエディタの Editor.log は書き込みが遅れることがある）
+                        System.IO.File.WriteAllLines("Temp/MmdSelfTest.txt", new[] { failures.Count == 0 ? "成功" : "失敗 " + failures.Count + " 件" }.Concat(failures));
                         break;
                     }
                     case "OpenManager":

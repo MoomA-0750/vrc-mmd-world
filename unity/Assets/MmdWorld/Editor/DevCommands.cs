@@ -24,6 +24,7 @@ namespace MmdWorld.EditorTools
     ///                     mobile を付けると、このビルドの間だけステーションを PlayerMobility.Mobile にする（踊りながら歩けるかの検証）
     ///                     同上。クライアントを2つ起動し、先に入った方が12秒後に枠1に入って再生する（そのビルドだけ）。後の方は枠1の正面から見る。
     ///                     ID を渡すと、踊る前にそのアバターに着替え、終わったら戻す ID のアバターに着替え直す（自分がアップロードしたか公開のアバターだけ）
+    ///   BuildAndTestVR    VR で1つ起動する（仮想の VR を scripts/vrsim.py で動かして確かめる。README の「仮想の VR で確かめる」）
     ///   OpenManager       マネージャーのウィンドウを開く
     ///   Refresh           AssetDatabase.Refresh
     /// </summary>
@@ -73,6 +74,9 @@ namespace MmdWorld.EditorTools
                             words.Length > 3 ? (words[3] == "features" ? 1 : words[3] == "tablet" ? 2 : words[3] == "drive" ? 3 : 0) : 0,
                             words.Contains("mobile"));
                         break;
+                    case "BuildAndTestVR":
+                        BuildAndTest(false, "", "", 0, vr: true);
+                        break;
                     case "OpenManager":
                         MmdWorldManagerWindow.Open();
                         break;
@@ -95,7 +99,7 @@ namespace MmdWorld.EditorTools
 
         public static void BuildAndTest(bool autoTest) => BuildAndTest(autoTest, "", "", 0);
 
-        public static async void BuildAndTest(bool autoTest, string avatarId, string restoreAvatarId, int scenario, bool mobile = false)
+        public static async void BuildAndTest(bool autoTest, string avatarId, string restoreAvatarId, int scenario, bool mobile = false, bool vr = false)
         {
             if (EditorApplication.isPlaying)
             {
@@ -103,7 +107,7 @@ namespace MmdWorld.EditorTools
                 return;
             }
             EditorSceneManager.OpenScene(WorldBuilder.ScenePath);
-            SetVrchatSetting("ForceNoVR", true);
+            SetVrchatSetting("ForceNoVR", !vr);
             // 自動確認のときは2つ起動し、1つ目が踊り、2つ目が客席から見る
             SetVrchatSetting("NumClients", autoTest ? 2 : 1);
 

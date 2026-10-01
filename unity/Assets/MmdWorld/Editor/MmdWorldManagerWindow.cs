@@ -352,6 +352,18 @@ namespace MmdWorld.EditorTools
                 settings.countdownSeconds = countdown;
                 Save(settings);
             }
+            EditorGUI.BeginChangeCheck();
+            bool autoAdd = EditorGUILayout.Toggle(new GUIContent("フォルダの .vmd から曲を作る", "組み立てのとき、下のフォルダの、まだ曲になっていない .vmd から曲を自動で作る。切っておけば、ここで足した曲だけになる"), settings.autoAddSongs);
+            string autoFolder = settings.autoAddFolder;
+            using (new EditorGUI.DisabledScope(!autoAdd))
+                autoFolder = EditorGUILayout.TextField(new GUIContent("　探すフォルダ", "この下だけを探す（Assets/ から書く）"), settings.autoAddFolder);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(settings, "ワールドの設定");
+                settings.autoAddSongs = autoAdd;
+                settings.autoAddFolder = autoFolder;
+                Save(settings);
+            }
             int controllers = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
             EditorGUILayout.LabelField($"ステーション {slots} 個（枠ごとに1つ）、ステーション用の Controller {controllers} 個（曲 × 区切り）", EditorStyles.miniLabel);
 

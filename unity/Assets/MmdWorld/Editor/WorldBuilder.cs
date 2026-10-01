@@ -77,7 +77,8 @@ namespace MmdWorld.EditorTools
 
             var settings = MmdWorldSettings.LoadOrCreate();
             _slotCount = Mathf.Clamp(settings.slotCount, 1, 16);
-            CreateMissingSongs();
+            // 曲になっていない .vmd から曲を作るのは、マネージャーで入れたときだけ（以前は Assets の下を全部探していて、購入物の .vmd まで勝手に曲になった）
+            if (settings.autoAddSongs) CreateMissingSongs(settings);
             // 表情だけ・カメラの .vmd を曲にしたもの、区切りが無い（短すぎる）ものは飛ばす
             var songs = new List<DanceSong>();
             foreach (var song in MmdWorldLibrary.Songs())
@@ -196,11 +197,18 @@ namespace MmdWorld.EditorTools
         }
 
         /// <summary>
-        /// DanceSong がまだ無い .vmd に、同じフォルダへ DanceSong を作る。音は同じフォルダに AudioClip が1つだけあればそれを使う。
-        /// .vmd と音を1つのフォルダに入れて組み立て直せば、曲が1つ増える。
+        /// settings.autoAddFolder の下の、DanceSong がまだ無い .vmd に、同じフォルダへ DanceSong を作る。音は同じフォルダに AudioClip が1つだけあればそれを使う。
+        /// .vmd と音を1つのフォルダに入れて組み立て直せば、曲が1つ増える。マネージャーで消した曲のモーション（settings.ignoredMotions）には作らない。
         /// </summary>
-        public static void CreateMissingSongs()
+        public static void CreateMissingSongs(MmdWorldSettings settings)
         {
+            string folder = string.IsNullOrEmpty(settings.autoAddFolder) ? MmdWorldLibrary.SongsDir : settings.autoAddFolder.TrimEnd('/');
+            if (!AssetDatabase.IsValidFolder(folder))
+            {
+                Debug.LogWarning($"[MmdWorld] 曲を自動で作るフォルダ {folder} が無い");
+                return;
+            }
+            var ignored = new HashSet<AnimationClip>((settings.ignoredMotions ?? new List<AnimationClip>()).Where(c => c != null));
             // 曲のモーション・パート・表情に使っている .vmd には作らない
             var used = new HashSet<AnimationClip>(AssetDatabase.FindAssets("t:" + nameof(DanceSong))
                 .Select(g => AssetDatabase.LoadAssetAtPath<DanceSong>(AssetDatabase.GUIDToAssetPath(g)))
@@ -208,12 +216,12 @@ namespace MmdWorld.EditorTools
                 .SelectMany(s => new[] { s.motion, s.face }.Concat(s.parts ?? new List<AnimationClip>()))
                 .Where(c => c != null));
 
-            foreach (string guid in AssetDatabase.FindAssets("t:AnimationClip", new[] { "Assets" }))
+            foreach (string guid in AssetDatabase.FindAssets("t:AnimationClip", new[] { folder }))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 if (!path.EndsWith(".vmd", StringComparison.OrdinalIgnoreCase)) continue;
                 var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
-                if (clip == null || used.Contains(clip)) continue;
+                if (clip == null || used.Contains(clip) || ignored.Contains(clip)) continue;
                 // 表情だけ・カメラの .vmd は曲にしない（配布物に一緒に入っていることが多い）
                 var kind = MmdWorldLibrary.Classify(path);
                 if (kind != MmdWorldLibrary.VmdKind.Dance)

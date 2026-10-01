@@ -24,6 +24,15 @@ namespace MmdWorld.EditorTools
         [Tooltip("ワールドに入れて、人と同じ枠で踊らせるアバター（Humanoid のモデルや VRChat のアバターの prefab）。どの枠で踊らせるかはタブレットの「選ぶ」で決める")]
         public List<GameObject> slotAvatars = new List<GameObject>();
 
+        [Tooltip("組み立てのとき、まだ曲になっていない .vmd を autoAddFolder の下から探して、曲を自動で作るか。切っておけば、マネージャーで足した曲だけになる")]
+        public bool autoAddSongs;
+
+        [Tooltip("autoAddSongs で .vmd を探すフォルダ（この下だけを探す）")]
+        public string autoAddFolder = "Assets/MmdWorld/Songs";
+
+        [Tooltip("マネージャーで消した曲のモーション。autoAddSongs を入れていても、これは曲に戻さない")]
+        public List<AnimationClip> ignoredMotions = new List<AnimationClip>();
+
         [Tooltip("着替え用の台に置くアバターの ID（avtr_...）。VRChat にアップロード済みで、公開（Public）のアバターだけが使える")]
         public List<string> pedestalAvatarIds = new List<string>();
 

@@ -169,7 +169,15 @@ namespace MmdWorld.EditorTools
             string dir = Path.GetDirectoryName(path).Replace('\\', '/');
             bool ownFolder = dir.StartsWith(SongsDir + "/") && AssetDatabase.FindAssets("t:" + nameof(DanceSong), new[] { dir }).Length == 1;
             if (ownFolder) AssetDatabase.DeleteAsset(dir);
-            else AssetDatabase.DeleteAsset(path);
+            else
+            {
+                // モーションは残るので、「フォルダの .vmd から曲を作る」を入れていても曲に戻さないように覚えておく
+                var settings = MmdWorldSettings.LoadOrCreate();
+                foreach (var clip in new[] { song.motion }.Concat(song.parts ?? new List<AnimationClip>()))
+                    if (clip != null && !settings.ignoredMotions.Contains(clip)) settings.ignoredMotions.Add(clip);
+                EditorUtility.SetDirty(settings);
+                AssetDatabase.DeleteAsset(path);
+            }
         }
 
         /// <summary>曲の並びを入れ替える（order を 0 から振り直す）。</summary>

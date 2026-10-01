@@ -16,4 +16,8 @@ MonoBehaviour:
   countdownSeconds: 3
   previewDancers: []
   slotAvatars: []
+  vrHeadFollowsDance: 0
+  autoAddSongs: 0
+  autoAddFolder: Assets/MmdWorld/Songs
+  ignoredMotions: []
   pedestalAvatarIds: []

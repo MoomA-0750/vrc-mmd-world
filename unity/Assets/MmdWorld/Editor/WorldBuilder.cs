@@ -77,6 +77,7 @@ namespace MmdWorld.EditorTools
 
             var settings = MmdWorldSettings.LoadOrCreate();
             _slotCount = Mathf.Clamp(settings.slotCount, 1, 16);
+            _headFollowsDance = settings.vrHeadFollowsDance;
             // 曲になっていない .vmd から曲を作るのは、マネージャーで入れたときだけ（以前は Assets の下を全部探していて、購入物の .vmd まで勝手に曲になった）
             if (settings.autoAddSongs) CreateMissingSongs(settings);
             // 表情だけ・カメラの .vmd を曲にしたもの、区切りが無い（短すぎる）ものは飛ばす
@@ -263,7 +264,8 @@ namespace MmdWorld.EditorTools
             dance.writeDefaultValues = false;
             // クリップには足の IK の目標（LeftFootT など）を焼いてあるので、体格の違うアバターでも足が MMD の位置に着く
             dance.iKOnFeet = true;
-            AddTrackingControl(dance, "Animation");
+            // VR の視点はアバターの頭に付くので、頭も踊りに合わせると、振り付けの頭の動きで視点が揺れる。ふだんは頭だけトラッキングのままにする
+            AddTrackingControl(dance, "Animation", _headFollowsDance ? null : "trackingHead");
             sm.defaultState = dance;
             return controller;
         }
@@ -300,7 +302,11 @@ namespace MmdWorld.EditorTools
         /// この部品はアバターの SDK（VRCSDK3A.dll）にしかなく、ワールドの SDK には無い。DLL をプロジェクトに入れてある（README）ときだけ付け、無ければ警告する。
         /// 降りてもトラッキングは自動では戻らないので、DanceSystem が降りる前に BuildRestoreController の Controller へ座り直す。
         /// </summary>
-        static void AddTrackingControl(AnimatorState state, string trackingType)
+        /// <summary>踊りのステーションで、VR の頭も踊りに合わせるか（MmdWorldSettings.vrHeadFollowsDance）。</summary>
+        static bool _headFollowsDance;
+
+        /// <summary>state に VRCAnimatorTrackingControl を付け、体の各部を trackingType にする。keepTracking の部位だけはトラッキングのままにする。</summary>
+        static void AddTrackingControl(AnimatorState state, string trackingType, string keepTracking = null)
         {
             var type = FindTrackingControlType();
             if (type == null)
@@ -314,7 +320,7 @@ namespace MmdWorld.EditorTools
             foreach (var part in TrackingParts)
             {
                 var field = type.GetField(part);
-                if (field != null) field.SetValue(behaviour, Enum.Parse(field.FieldType, trackingType));
+                if (field != null) field.SetValue(behaviour, Enum.Parse(field.FieldType, part == keepTracking ? "Tracking" : trackingType));
             }
             EditorUtility.SetDirty(behaviour);
         }

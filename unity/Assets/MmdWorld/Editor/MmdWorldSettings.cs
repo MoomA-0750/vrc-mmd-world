@@ -24,6 +24,9 @@ namespace MmdWorld.EditorTools
         [Tooltip("ワールドに入れて、人と同じ枠で踊らせるアバター（Humanoid のモデルや VRChat のアバターの prefab）。どの枠で踊らせるかはタブレットの「選ぶ」で決める")]
         public List<GameObject> slotAvatars = new List<GameObject>();
 
+        [Tooltip("VR で踊っているとき、頭も踊りに合わせるか。入れると振り付けの頭の動きで視点が揺れる（酔いやすい）。切っておけば、頭（視点）はヘッドセットのまま、体だけ踊る")]
+        public bool vrHeadFollowsDance;
+
         [Tooltip("組み立てのとき、まだ曲になっていない .vmd を autoAddFolder の下から探して、曲を自動で作るか。切っておけば、マネージャーで足した曲だけになる")]
         public bool autoAddSongs;
 

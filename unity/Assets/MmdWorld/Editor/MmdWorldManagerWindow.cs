@@ -345,11 +345,13 @@ namespace MmdWorld.EditorTools
             EditorGUI.BeginChangeCheck();
             int slots = EditorGUILayout.IntSlider("踊る人の枠", settings.slotCount, 1, 16);
             float countdown = EditorGUILayout.Slider("カウントダウン（秒）", settings.countdownSeconds, 0f, 10f);
+            bool headFollows = EditorGUILayout.Toggle(new GUIContent("VR で頭も踊りに合わせる", "入れると振り付けの頭の動きで視点が揺れる（酔いやすい）。切っておけば、頭（視点）はヘッドセットのまま、体だけ踊る"), settings.vrHeadFollowsDance);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(settings, "ワールドの設定");
                 settings.slotCount = slots;
                 settings.countdownSeconds = countdown;
+                settings.vrHeadFollowsDance = headFollows;
                 Save(settings);
             }
             EditorGUI.BeginChangeCheck();

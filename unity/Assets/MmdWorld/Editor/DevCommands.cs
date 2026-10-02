@@ -289,6 +289,11 @@ namespace MmdWorld.EditorTools
                 var root = rootField?.GetValue(c) as Transform;
                 lines.Add($"{c.GetType().Name} {Path(c.transform)}: 根元 {Path(root != null ? root : c.transform)}（頭の下 {(head != null && (root != null ? root : c.transform).IsChildOf(head))}）");
             }
+            // 一番上の階層のもの（MA が頭などに付けるために出したものがここに来る）の部品
+            foreach (Transform child in prefab.transform)
+                lines.Add($"一番上 {child.name}: " + string.Join("、", child.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().FullName)));
+            foreach (var c in prefab.GetComponentsInChildren<Component>(true).Where(c => c != null && (c.GetType().Name.Contains("Constraint"))))
+                lines.Add($"{c.GetType().FullName} {Path(c.transform)}");
             lines.Add("見つからないスクリプト: " + prefab.GetComponentsInChildren<Transform>(true).Sum(t => GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(t.gameObject)));
             return string.Join("\n", lines);
         }

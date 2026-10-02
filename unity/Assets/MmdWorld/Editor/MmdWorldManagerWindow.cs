@@ -162,6 +162,9 @@ namespace MmdWorld.EditorTools
             if (!string.IsNullOrEmpty(folder)) { settings.autoAddFolder = folder; Save(settings); }
             _detected = MmdWorldLibrary.DetectSongs(settings, out _detectedSkipped);
             _detectedPicked = _detected.Select(_ => true).ToList();
+            // 一覧はウィンドウの一番下（「ワールド」の中）にあるので、大きくして下まで送る
+            position = new Rect(position.x, 80, Mathf.Max(position.width, 720), 1000);
+            _scroll = new Vector2(0, 100000);
             Repaint();
         }
 

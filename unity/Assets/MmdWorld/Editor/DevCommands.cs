@@ -21,6 +21,7 @@ namespace MmdWorld.EditorTools
     ///                     features を付けると、再生とシークの代わりに、プレビュー・範囲再生・ループ・途中からの参加を試す。
     ///                     tablet を付けると、手元のタブレットを出してそのボタンから操作する
     ///                     drive を付けると、踊りながらスティックを倒したことにして、枠ごと動くかを見る
+    ///                     preview を付けると、見る側はお手本の正面から見る
     ///                     mobile を付けると、このビルドの間だけステーションを PlayerMobility.Mobile にする（踊りながら歩けるかの検証）
     ///                     同上。クライアントを2つ起動し、先に入った方が12秒後に枠1に入って再生する（そのビルドだけ）。後の方は枠1の正面から見る。
     ///                     ID を渡すと、踊る前にそのアバターに着替え、終わったら戻す ID のアバターに着替え直す（自分がアップロードしたか公開のアバターだけ）
@@ -79,7 +80,7 @@ namespace MmdWorld.EditorTools
                         // BuildAndTestAuto [着替えるアバターID] [戻すアバターID]
                         BuildAndTest(true, words.Length > 1 ? words[1] : "", words.Length > 2 ? words[2] : "",
                             words.Length > 3 ? (words[3] == "features" ? 1 : words[3] == "tablet" ? 2 : words[3] == "drive" ? 3 : 0) : 0,
-                            words.Contains("mobile"));
+                            words.Contains("mobile"), viewPreview: words.Contains("preview"));
                         break;
                     case "BuildAndTestVR":
                         // BuildAndTestVR [auto] [immobilize]: auto なら入って 12 秒後に自分で枠1に入って再生する。immobilize ならこのビルドだけステーションを Immobilize にする
@@ -164,7 +165,7 @@ namespace MmdWorld.EditorTools
 
         public static void BuildAndTest(bool autoTest) => BuildAndTest(autoTest, "", "", 0);
 
-        public static async void BuildAndTest(bool autoTest, string avatarId, string restoreAvatarId, int scenario, bool mobile = false, bool vr = false, bool vrAuto = false, bool immobilize = false)
+        public static async void BuildAndTest(bool autoTest, string avatarId, string restoreAvatarId, int scenario, bool mobile = false, bool vr = false, bool vrAuto = false, bool immobilize = false, bool viewPreview = false)
         {
             if (EditorApplication.isPlaying)
             {
@@ -201,6 +202,13 @@ namespace MmdWorld.EditorTools
                     // 踊りながら動く確認では、枠の前へ 4m まで出てくるので、離れて見る
                     float distance = scenario == 3 ? 7f : 1.5f;
                     viewPoint.transform.SetPositionAndRotation(slot1.position + slot1.forward * distance, Quaternion.LookRotation(-slot1.forward));
+                }
+                // preview なら、見る側はお手本の正面から見る（取り込んだアバターの確認用）
+                var previewDancer = system.previewDancers != null ? system.previewDancers.FirstOrDefault(a => a != null) : null;
+                if (viewPreview && previewDancer != null)
+                {
+                    var p = previewDancer.transform;
+                    viewPoint.transform.SetPositionAndRotation(p.position + p.forward * 2.2f, Quaternion.LookRotation(-p.forward));
                 }
                 system.autoTestViewPoint = viewPoint.transform;
                 if (MmdWorldLibrary.IsValidAvatarId(avatarId))

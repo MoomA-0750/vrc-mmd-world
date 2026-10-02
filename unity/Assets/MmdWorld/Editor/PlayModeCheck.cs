@@ -179,7 +179,7 @@ namespace MmdWorld.EditorTools
         {
             System.IO.Directory.CreateDirectory(ShotDir);
             Render($"{ShotDir}/shot{index:00}.png", new Vector3(1.4f, 1.3f, 1.0f), new Vector3(1.4f, 0.8f, 4.5f), 55f);
-            // 舞台から客席を見る（踊る人から見た景色。鏡が見えるか）
+            // 舞台から客席を見る（踊る人から見た景色）
             if (index == 0) Render($"{ShotDir}/from_stage.png", new Vector3(0f, 1.5f, 4.5f), new Vector3(0f, 1.3f, 0f), 60f);
             if (_localAvatar == null) return;
 

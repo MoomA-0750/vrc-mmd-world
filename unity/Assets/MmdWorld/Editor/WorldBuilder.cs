@@ -210,54 +210,15 @@ namespace MmdWorld.EditorTools
         }
 
         /// <summary>
-        /// settings.autoAddFolder の下の、DanceSong がまだ無い .vmd に、同じフォルダへ DanceSong を作る。音は同じフォルダに AudioClip が1つだけあればそれを使う。
-        /// .vmd と音を1つのフォルダに入れて組み立て直せば、曲が1つ増える。マネージャーで消した曲のモーション（settings.ignoredMotions）には作らない。
+        /// settings.autoAddFolder の下の、まだ曲になっていない .vmd から曲を作る（MmdWorldLibrary.DetectSongs と同じ決め方。マネージャーの「フォルダから曲を探す」で先に一覧を見られる）。
         /// </summary>
         public static void CreateMissingSongs(MmdWorldSettings settings)
         {
-            string folder = string.IsNullOrEmpty(settings.autoAddFolder) ? MmdWorldLibrary.SongsDir : settings.autoAddFolder.TrimEnd('/');
-            if (!AssetDatabase.IsValidFolder(folder))
+            foreach (var planned in MmdWorldLibrary.DetectSongs(settings, out _))
             {
-                Debug.LogWarning($"[MmdWorld] 曲を自動で作るフォルダ {folder} が無い");
-                return;
+                var song = MmdWorldLibrary.CreateSongInPlace(planned);
+                Debug.Log($"[MmdWorld] 曲を作りました: {AssetDatabase.GetAssetPath(song)}（音: {(song.audio != null ? song.audio.name : "なし")}、パート {MmdWorldLibrary.Parts(song).Count}）");
             }
-            var ignored = new HashSet<AnimationClip>((settings.ignoredMotions ?? new List<AnimationClip>()).Where(c => c != null));
-            // 曲のモーション・パート・表情に使っている .vmd には作らない
-            var used = new HashSet<AnimationClip>(AssetDatabase.FindAssets("t:" + nameof(DanceSong))
-                .Select(g => AssetDatabase.LoadAssetAtPath<DanceSong>(AssetDatabase.GUIDToAssetPath(g)))
-                .Where(s => s != null)
-                .SelectMany(s => new[] { s.motion, s.face }.Concat(s.parts ?? new List<AnimationClip>()))
-                .Where(c => c != null));
-
-            foreach (string guid in AssetDatabase.FindAssets("t:AnimationClip", new[] { folder }))
-            {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!path.EndsWith(".vmd", StringComparison.OrdinalIgnoreCase)) continue;
-                var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
-                if (clip == null || used.Contains(clip) || ignored.Contains(clip)) continue;
-                // 表情だけ・カメラの .vmd は曲にしない（配布物に一緒に入っていることが多い）
-                var kind = MmdWorldLibrary.Classify(path);
-                if (kind != MmdWorldLibrary.VmdKind.Dance)
-                {
-                    Debug.Log($"[MmdWorld] {path} は{MmdWorldLibrary.KindName(kind)}なので曲にしない");
-                    continue;
-                }
-
-                string dir = Path.GetDirectoryName(path).Replace('\\', '/');
-                var audios = AssetDatabase.FindAssets("t:AudioClip", new[] { dir })
-                    .Select(g => AssetDatabase.GUIDToAssetPath(g))
-                    .Where(p => Path.GetDirectoryName(p).Replace('\\', '/') == dir)
-                    .ToList();
-
-                var song = ScriptableObject.CreateInstance<DanceSong>();
-                song.title = Path.GetFileNameWithoutExtension(path);
-                song.motion = clip;
-                song.audio = audios.Count == 1 ? AssetDatabase.LoadAssetAtPath<AudioClip>(audios[0]) : null;
-                string songPath = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{song.title}.asset");
-                AssetDatabase.CreateAsset(song, songPath);
-                Debug.Log($"[MmdWorld] 曲を作りました: {songPath}（音: {(song.audio != null ? song.audio.name : "なし")}）");
-            }
-            AssetDatabase.SaveAssets();
         }
 
         // ---- 曲ごとのアニメーター ----
@@ -276,7 +237,7 @@ namespace MmdWorld.EditorTools
             dance.writeDefaultValues = false;
             // クリップには足の IK の目標（LeftFootT など）を焼いてあるので、体格の違うアバターでも足が MMD の位置に着く
             dance.iKOnFeet = true;
-            // VR の視点はアバターの頭に付くので、頭も踊りに合わせると、振り付けの頭の動きで視点が揺れる。ふだんは頭だけトラッキングのままにする
+            // VR の視点はアバターの頭に付くので、頭も踊りに合わせると、振り付けの頭の動きで視点が揺れる。切り替えで頭だけトラッキングのままにできる
             AddTrackingControl(dance, "Animation", _headFollowsDance ? null : "trackingHead");
             sm.defaultState = dance;
             return controller;
@@ -577,12 +538,7 @@ namespace MmdWorld.EditorTools
                 AssetDatabase.LoadAssetAtPath<GameObject>("Packages/com.vrchat.worlds/Samples/UdonExampleScene/Prefabs/VRCWorld.prefab"));
             world.transform.SetPositionAndRotation(new Vector3(0f, 0f, -1f), Quaternion.identity);
 
-            // 客席の後ろの鏡。踊る人が自分の姿を見る（MMD ワールドの定番）。VRCMirror はそのままで +Z（舞台）側に映る面が向いている
-            var mirror = (GameObject)PrefabUtility.InstantiatePrefab(
-                AssetDatabase.LoadAssetAtPath<GameObject>("Packages/com.vrchat.worlds/Samples/UdonExampleScene/Prefabs/VRCMirror.prefab"));
-            mirror.name = "Mirror";
-            mirror.transform.SetPositionAndRotation(new Vector3(0f, 1.7f, -2.5f), Quaternion.identity);
-            mirror.transform.localScale = new Vector3(8f, 3.4f, 1f);
+            // 客席の後ろの鏡は、本人の希望で置かない（2026-10-02）
         }
 
         static DanceSlot BuildSlot(int index, DanceSystem system, RuntimeAnimatorController firstController)

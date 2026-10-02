@@ -180,6 +180,60 @@ namespace MmdWorld.EditorTools
             }
         }
 
+        /// <summary>
+        /// settings.autoAddFolder の下で、まだ曲になっていない .vmd から作れる曲を探す（作りはしない）。
+        /// フォルダごとに、マネージャーへドロップしたときと同じ決め方（MmdWorldManagerWindow.PlanDropped）でまとめる:
+        /// 名前の末尾だけが違う踊りは複数人の1曲に、表情だけの .vmd は踊りに重ね、カメラは飛ばし、音声は1つなら付ける。
+        /// 曲のモーション・パート・表情に使っている .vmd と、マネージャーで消した曲のモーション（settings.ignoredMotions）は使わない。
+        /// パスはすべて Assets/ からのもの。skipped には曲にしなかったものと理由が入る。
+        /// </summary>
+        public static List<MmdWorldManagerWindow.PlannedSong> DetectSongs(MmdWorldSettings settings, out List<string> skipped)
+        {
+            skipped = new List<string>();
+            var result = new List<MmdWorldManagerWindow.PlannedSong>();
+            string folder = string.IsNullOrEmpty(settings.autoAddFolder) ? SongsDir : settings.autoAddFolder.TrimEnd('/');
+            if (!AssetDatabase.IsValidFolder(folder))
+            {
+                skipped.Add($"フォルダ {folder} が無い");
+                return result;
+            }
+            var used = new HashSet<string>(AssetDatabase.FindAssets("t:" + nameof(DanceSong))
+                .Select(g => AssetDatabase.LoadAssetAtPath<DanceSong>(AssetDatabase.GUIDToAssetPath(g)))
+                .Where(s => s != null)
+                .SelectMany(s => new[] { s.motion, s.face }.Concat(s.parts ?? new List<AnimationClip>()))
+                .Concat(settings.ignoredMotions ?? new List<AnimationClip>())
+                .Where(c => c != null)
+                .Select(AssetDatabase.GetAssetPath));
+            var files = AssetDatabase.FindAssets("", new[] { folder })
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(p => (IsVmdFile(p) && !used.Contains(p)) || IsAudioFile(p))
+                .Distinct();
+            foreach (var dir in files.GroupBy(p => Path.GetDirectoryName(p).Replace('\\', '/')).OrderBy(g => g.Key))
+            {
+                if (!dir.Any(IsVmdFile)) continue;
+                var plan = MmdWorldManagerWindow.PlanDropped(dir, Classify);
+                result.AddRange(plan.Songs);
+                skipped.AddRange(plan.Skipped.Select(x => $"{dir.Key}: {x}"));
+            }
+            return result;
+        }
+
+        /// <summary>DetectSongs で見つけた曲を、モーションと同じフォルダに DanceSong として作る（ファイルは写さない）。</summary>
+        public static DanceSong CreateSongInPlace(MmdWorldManagerWindow.PlannedSong planned)
+        {
+            var song = ScriptableObject.CreateInstance<DanceSong>();
+            song.title = planned.title;
+            song.motion = AssetDatabase.LoadAssetAtPath<AnimationClip>(planned.vmd);
+            song.parts = planned.parts.Select(AssetDatabase.LoadAssetAtPath<AnimationClip>).Where(c => c != null).ToList();
+            song.face = string.IsNullOrEmpty(planned.face) ? null : AssetDatabase.LoadAssetAtPath<AnimationClip>(planned.face);
+            song.audio = string.IsNullOrEmpty(planned.audio) ? null : AssetDatabase.LoadAssetAtPath<AudioClip>(planned.audio);
+            song.order = Songs().Select(s => s.order).DefaultIfEmpty(-1).Max() + 1;
+            string dir = Path.GetDirectoryName(planned.vmd).Replace('\\', '/');
+            AssetDatabase.CreateAsset(song, AssetDatabase.GenerateUniqueAssetPath($"{dir}/{SafeName(song.title)}.asset"));
+            AssetDatabase.SaveAssets();
+            return song;
+        }
+
         /// <summary>曲の並びを入れ替える（order を 0 から振り直す）。</summary>
         public static void Move(DanceSong song, int delta)
         {

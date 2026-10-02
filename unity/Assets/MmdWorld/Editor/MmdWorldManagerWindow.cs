@@ -150,6 +150,68 @@ namespace MmdWorld.EditorTools
             if (GUI.changed) AssetDatabase.SaveAssets();
         }
 
+        // フォルダから見つけた曲の候補（「フォルダから曲を探す」を押したときに作り、登録するかやめるまで出す）
+        List<PlannedSong> _detected;
+        List<bool> _detectedPicked;
+        List<string> _detectedSkipped;
+
+        /// <summary>
+        /// フォルダの .vmd から曲を作る: 探すフォルダ、「フォルダから曲を探す」（登録する前に、どう登録するかの一覧を見せる）、組み立てのときに自動で作るか（初期は切る）。
+        /// </summary>
+        void DrawDetect(MmdWorldSettings settings)
+        {
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("フォルダの .vmd から曲を作る", EditorStyles.miniBoldLabel);
+            EditorGUI.BeginChangeCheck();
+            string folder = EditorGUILayout.TextField(new GUIContent("探すフォルダ", "この下だけを探す（Assets/ から書く）"), settings.autoAddFolder);
+            bool autoAdd = EditorGUILayout.Toggle(new GUIContent("組み立てのときに自動で作る", "組み立てのとき、探すフォルダの、まだ曲になっていない .vmd から曲を作る（下の「フォルダから曲を探す」と同じ決め方）。切っておけば、自分で足した曲だけになる"), settings.autoAddSongs);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(settings, "ワールドの設定");
+                settings.autoAddFolder = folder;
+                settings.autoAddSongs = autoAdd;
+                Save(settings);
+                _detected = null;
+            }
+            if (GUILayout.Button(new GUIContent("フォルダから曲を探す", "探すフォルダの、まだ曲になっていない .vmd から作れる曲を一覧にする。登録は一覧を見てから選ぶ")))
+            {
+                _detected = MmdWorldLibrary.DetectSongs(settings, out _detectedSkipped);
+                _detectedPicked = _detected.Select(_ => true).ToList();
+            }
+            if (_detected == null) return;
+
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                if (_detected.Count == 0) EditorGUILayout.LabelField("まだ曲になっていない踊りの .vmd はありませんでした", EditorStyles.wordWrappedMiniLabel);
+                for (int i = 0; i < _detected.Count; i++)
+                {
+                    var d = _detected[i];
+                    _detectedPicked[i] = EditorGUILayout.ToggleLeft(d.title + (d.parts.Count > 0 ? $"（{d.parts.Count + 1}人）" : ""), _detectedPicked[i], EditorStyles.boldLabel);
+                    using (new EditorGUI.IndentLevelScope())
+                    {
+                        EditorGUILayout.LabelField("モーション", d.vmd, EditorStyles.miniLabel);
+                        for (int p = 0; p < d.parts.Count; p++) EditorGUILayout.LabelField($"{p + 2}人目", d.parts[p], EditorStyles.miniLabel);
+                        EditorGUILayout.LabelField("表情", string.IsNullOrEmpty(d.face) ? "なし" : d.face, EditorStyles.miniLabel);
+                        EditorGUILayout.LabelField("音声", string.IsNullOrEmpty(d.audio) ? "なし（同じフォルダに音声が無いか、2つ以上ある）" : d.audio, EditorStyles.miniLabel);
+                    }
+                }
+                if (_detectedSkipped != null && _detectedSkipped.Count > 0)
+                    EditorGUILayout.LabelField("曲にしないもの: " + string.Join("、", _detectedSkipped), EditorStyles.wordWrappedMiniLabel);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    using (new EditorGUI.DisabledScope(!_detectedPicked.Any(x => x)))
+                        if (GUILayout.Button($"選んだ {_detectedPicked.Count(x => x)} 曲を登録する"))
+                        {
+                            var added = _detected.Where((_, k) => _detectedPicked[k]).Select(d => MmdWorldLibrary.CreateSongInPlace(d).DisplayTitle).ToList();
+                            Show($"曲を {added.Count} つ登録しました（{string.Join("、", added)}）。ファイルはその場所のまま使います。「ワールドを組み立て直す」でシーンに反映されます", MessageType.Info);
+                            _detected = null;
+                            GUIUtility.ExitGUI();
+                        }
+                    if (GUILayout.Button("閉じる")) _detected = null;
+                }
+            }
+        }
+
         /// <summary>曲の一覧の書き出し・読み込み（JSON は設定だけ、.unitypackage は素材ごと）。</summary>
         void DrawExport(List<DanceSong> songs)
         {
@@ -414,7 +476,7 @@ namespace MmdWorld.EditorTools
             EditorGUI.BeginChangeCheck();
             int slots = EditorGUILayout.IntSlider("踊る人の枠", settings.slotCount, 1, 16);
             float countdown = EditorGUILayout.Slider("カウントダウン（秒）", settings.countdownSeconds, 0f, 10f);
-            bool headFollows = EditorGUILayout.Toggle(new GUIContent("VR で頭も踊りに合わせる", "入れると振り付けの頭の動きで視点が揺れる（酔いやすい）。切っておけば、頭（視点）はヘッドセットのまま、体だけ踊る"), settings.vrHeadFollowsDance);
+            bool headFollows = EditorGUILayout.Toggle(new GUIContent("VR で頭も踊りに合わせる", "入れると頭も振り付けどおりに動く（今は視点も一緒に揺れる）。切ると、頭（視点）はヘッドセットのまま、体だけ踊る"), settings.vrHeadFollowsDance);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(settings, "ワールドの設定");
@@ -423,18 +485,7 @@ namespace MmdWorld.EditorTools
                 settings.vrHeadFollowsDance = headFollows;
                 Save(settings);
             }
-            EditorGUI.BeginChangeCheck();
-            bool autoAdd = EditorGUILayout.Toggle(new GUIContent("フォルダの .vmd から曲を作る", "組み立てのとき、下のフォルダの、まだ曲になっていない .vmd から曲を自動で作る。切っておけば、ここで足した曲だけになる"), settings.autoAddSongs);
-            string autoFolder = settings.autoAddFolder;
-            using (new EditorGUI.DisabledScope(!autoAdd))
-                autoFolder = EditorGUILayout.TextField(new GUIContent("　探すフォルダ", "この下だけを探す（Assets/ から書く）"), settings.autoAddFolder);
-            if (EditorGUI.EndChangeCheck())
-            {
-                Undo.RecordObject(settings, "ワールドの設定");
-                settings.autoAddSongs = autoAdd;
-                settings.autoAddFolder = autoFolder;
-                Save(settings);
-            }
+            DrawDetect(settings);
             int controllers = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
             EditorGUILayout.LabelField($"ステーション {slots} 個（枠ごとに1つ）、ステーション用の Controller {controllers} 個（曲 × 区切り）", EditorStyles.miniLabel);
 

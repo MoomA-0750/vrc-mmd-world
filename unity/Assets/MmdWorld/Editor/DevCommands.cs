@@ -28,6 +28,7 @@ namespace MmdWorld.EditorTools
     ///   SelfTest          マネージャーまわりの自己テスト（LibrarySelfTest）。結果はコンソールに [MmdWorld.SelfTest] で出る
     ///   OpenManager       マネージャーのウィンドウを開く
     ///   OpenAudioOffset   音のずれを合わせるウィンドウを開く
+    ///   Setting 名前 値   MmdWorldSettings の bool・int・float・string の欄を変えて保存する（試しの切り替え用）
     ///   ShowDetect [フォルダ]  マネージャーを開き、探すフォルダを変えて「フォルダから曲を探す」を押したところにする（登録はしない）
     ///   Refresh           AssetDatabase.Refresh
     /// </summary>
@@ -94,6 +95,20 @@ namespace MmdWorld.EditorTools
                         MmdWorldManagerWindow.Open();
                         EditorWindow.GetWindow<MmdWorldManagerWindow>().ShowDetected(words.Length > 1 ? string.Join(" ", words.Skip(1)) : null);
                         break;
+                    case "Setting":
+                    {
+                        var settings = MmdWorldSettings.LoadOrCreate();
+                        var field = typeof(MmdWorldSettings).GetField(words[1]);
+                        object value = field.FieldType == typeof(bool) ? (object)bool.Parse(words[2])
+                            : field.FieldType == typeof(int) ? int.Parse(words[2])
+                            : field.FieldType == typeof(float) ? float.Parse(words[2], System.Globalization.CultureInfo.InvariantCulture)
+                            : string.Join(" ", words.Skip(2));
+                        field.SetValue(settings, value);
+                        EditorUtility.SetDirty(settings);
+                        AssetDatabase.SaveAssets();
+                        Debug.Log($"[MmdWorld.Command] 設定 {words[1]} = {value}");
+                        break;
+                    }
                     case "OpenAudioOffset":
                         AudioOffsetWindow.Open();
                         break;

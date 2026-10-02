@@ -102,6 +102,8 @@ namespace MmdWorld
         public float[] trackLengths;
         [Tooltip("複数人のモーションの立ち位置の原点（ステージの中央）。パートが2つ以上の曲では、全員この点からの位置で踊る")]
         public Transform stageOrigin;
+        [Tooltip("振り付けの移動で、ステーションを動かすか（ワールドを組み立てるメニューが入れる。試しの travelInClip のときは動かさない）")]
+        public bool moveStations = true;
         [Tooltip("トラックごとの立ち位置のずれ（メートル。x: 踊る人から見て右、z: 前＝客席の方）。複数人のモーションで、配布物の立ち位置が合っていないときに直す")]
         public Vector3[] trackOffsets;
         [Tooltip("曲ごとの、区切りの始まりの位置と数")]
@@ -803,7 +805,7 @@ namespace MmdWorld
             if (_audioVolume > 0f && audioSource != null) audioSource.volume = _audioVolume;
             SyncAudio(song, t);
             SyncPreview(song, t, songLengths[song]);
-            MoveStations(song, t);
+            if (moveStations) MoveStations(song, t);
             SetSeekBarTime(t);
             SetStatus(FormatTime(t) + " / " + FormatTime(songLengths[song]) + RangeLabel(song));
         }

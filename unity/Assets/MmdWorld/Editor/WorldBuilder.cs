@@ -111,7 +111,8 @@ namespace MmdWorld.EditorTools
                     trackClips.Add(part);
                 }
             }
-            var stationClips = trackClips.Select((c, t) => WithFace(songs[trackSong[t]], MmdWorldLibrary.InPlaceClip(c), $"Track{t}_InPlace")).ToList();
+            // ふだんは移動を抜いたクリップにして、移動は DanceSystem がステーションごと動かして出す。travelInClip（試し）なら移動を残し、ステーションは動かさない
+            var stationClips = trackClips.Select((c, t) => WithFace(songs[trackSong[t]], settings.travelInClip ? c : MmdWorldLibrary.InPlaceClip(c), $"Track{t}_InPlace")).ToList();
             var fullClips = trackClips.Select((c, t) => WithFace(songs[trackSong[t]], c, $"Track{t}")).ToList();
 
             // ステーション用の Controller は、曲 × 区切りの数だけ作り直す（前の分は丸ごと消す）
@@ -181,6 +182,7 @@ namespace MmdWorld.EditorTools
             system.trackLengths = fullClips.Select(c => c.length).ToArray();
             system.trackSegmentStart = trackSegmentStart.ToArray();
             system.stageOrigin = BuildStageOrigin();
+            system.moveStations = !settings.travelInClip;
             system.segmentTimes = segments.SelectMany(g => g).ToArray();
             system.segmentControllers = segmentControllers.ToArray();
             system.segmentStart = segments.Select((g, i) => segments.Take(i).Sum(x => x.Count)).ToArray();

@@ -125,6 +125,19 @@ namespace MmdWorld.EditorTools
                 MmdWorldLibrary.Move(song, -1);
                 Check(MmdWorldLibrary.Songs().IndexOf(song) == before - 1, "▲で1つ前へ動く");
 
+                // アバターのプロジェクトから取り込む: アバターのプロジェクトか、シーンの中の Avatar Descriptor の付いた GameObject の名前を拾えるか（同じ DLL のほかの部品は拾わない）
+                string fakeProject = Path.Combine(Path.GetTempPath(), "mmdworld-selftest-avatar");
+                Directory.CreateDirectory(Path.Combine(fakeProject, "Packages"));
+                Directory.CreateDirectory(Path.Combine(fakeProject, "Assets", "Scene"));
+                File.WriteAllText(Path.Combine(fakeProject, "Packages", "vpm-manifest.json"), "{\"dependencies\":{\"com.vrchat.avatars\":{\"version\":\"3.10.5\"}}}");
+                File.WriteAllText(Path.Combine(fakeProject, "Assets", "Scene", "a.unity"),
+                    "%YAML 1.1\n--- !u!1 &100\nGameObject:\n  m_Name: テストのアバター\n--- !u!114 &101\nMonoBehaviour:\n  m_GameObject: {fileID: 100}\n  m_Script: {fileID: 542108242, guid: 67cc4cb7839cd3741b63733d5adf0442, type: 3}\n" +
+                    "--- !u!1 &200\nGameObject:\n  m_Name: エフェクト\n--- !u!114 &201\nMonoBehaviour:\n  m_GameObject: {fileID: 200}\n  m_Script: {fileID: -1122756469, guid: 67cc4cb7839cd3741b63733d5adf0442, type: 3}\n");
+                var avatars = AvatarImporter.FindAvatars(fakeProject);
+                Check(AvatarImporter.IsAvatarProject(fakeProject) && avatars.Count == 1 && avatars[0].name == "テストのアバター" && avatars[0].file == "Assets/Scene/a.unity",
+                      "アバターのプロジェクトのシーンから、Avatar Descriptor の付いたアバターだけを見つける: " + string.Join(", ", avatars));
+                Directory.Delete(fakeProject, true);
+
                 // 音のずれを合わせるウィンドウが使う、モーションの動きの大きさ
                 var activity = AudioOffsetWindow.MotionActivity(song.motion);
                 Check(activity.Length > 60 * 60 && activity.Max() <= 1f && activity.Count(v => v > 0.3f) > 100, $"モーションの動きの大きさが読める（{activity.Length} 個、山 {activity.Count(v => v > 0.3f)} 個）");

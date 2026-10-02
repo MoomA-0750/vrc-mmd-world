@@ -27,9 +27,6 @@ namespace MmdWorld.EditorTools
         [Tooltip("VR で踊っているとき、頭も踊りに合わせるか（初期は入れる）。今は、入れると振り付けの頭の動きで視点も揺れる。切ると、頭（視点）はヘッドセットのまま、体だけ踊る")]
         public bool vrHeadFollowsDance = true;
 
-        [Tooltip("（試し）振り付けの移動をステーションのクリップに残し、ステーションは動かさない。視点が振り付けの移動で揺れないかを確かめる")]
-        public bool travelInClip;
-
         [Tooltip("組み立てのとき、まだ曲になっていない .vmd を autoAddFolder の下から探して、曲を自動で作るか。切っておけば、マネージャーで足した曲だけになる")]
         public bool autoAddSongs;
 

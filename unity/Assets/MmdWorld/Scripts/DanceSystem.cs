@@ -77,20 +77,13 @@ namespace MmdWorld
         [Tooltip("枠の位置からどこまで離れられるか（メートル）")]
         public float driveRadius = 4f;
 
-        [Header("体の軌跡（ワールドを組み立てるメニューが入れる）")]
-        [Tooltip("全曲ぶんをつなげた軌跡（床の上の位置）。目の高さを 1 とした値。向きはステーションのクリップに入っているので持たない")]
-        public float[] trajX;
-        public float[] trajZ;
-        [Tooltip("トラック（曲 × パート）ごとの、軌跡の始まりの位置・数・1秒あたりのサンプル数")]
-        public int[] trajStart;
-        public int[] trajCount;
-        public float[] trajRate;
-
         [Header("区切り（ワールドを組み立てるメニューが入れる）")]
         [Tooltip("全曲ぶんをつなげた、区切りの時刻（秒）と、その時刻から始まるステーション用の Controller")]
         public float[] segmentTimes;
         [Tooltip("トラック（曲 × パート）× 区切りの Controller。トラック t の区切り k は segmentControllers[trackSegmentStart[t] + k]")]
         public RuntimeAnimatorController[] segmentControllers;
+        [Tooltip("segmentControllers と同じ並びの、移動を抜いたクリップの Controller（「その場」の枠が使う）")]
+        public RuntimeAnimatorController[] inPlaceControllers;
         public int[] trackSegmentStart;
 
         [Header("複数人のモーション（ワールドを組み立てるメニューが入れる）")]
@@ -102,8 +95,6 @@ namespace MmdWorld
         public float[] trackLengths;
         [Tooltip("複数人のモーションの立ち位置の原点（ステージの中央）。パートが2つ以上の曲では、全員この点からの位置で踊る")]
         public Transform stageOrigin;
-        [Tooltip("振り付けの移動で、ステーションを動かすか（ワールドを組み立てるメニューが入れる。試しの travelInClip のときは動かさない）")]
-        public bool moveStations = true;
         [Tooltip("トラックごとの立ち位置のずれ（メートル。x: 踊る人から見て右、z: 前＝客席の方）。複数人のモーションで、配布物の立ち位置が合っていないときに直す")]
         public Vector3[] trackOffsets;
         [Tooltip("曲ごとの、区切りの始まりの位置と数")]
@@ -697,14 +688,15 @@ namespace MmdWorld
         }
 
         /// <summary>
-        /// 「その場で踊る」を切り替える（タブレットから）。オンなら、ステーションを振り付けの移動どおりに動かさない。
-        /// VR では視点がステーションに付いているので、オンだと視点は動かない代わりに、体は移動せず足踏みになる。
+        /// 「その場で踊る」を切り替える（タブレットから）。オンなら、振り付けの移動を抜いた踊りで、枠の位置から動かずに踊る（複数人のモーションでも隊形に入らない）。
+        /// 踊っている途中なら、次の区切りで座り直して切り替える。
         /// </summary>
         public void ToggleInPlace()
         {
             _preferInPlace = !_preferInPlace;
             Debug.Log("[MmdWorld] その場で踊る: " + _preferInPlace);
             ApplyInPlace();
+            if (_localStation != null) _switchPending = true;
         }
 
         /// <summary>自分の枠に「その場で踊る」を入れ、ボタンの文字を今の状態にする。</summary>
@@ -805,7 +797,7 @@ namespace MmdWorld
             if (_audioVolume > 0f && audioSource != null) audioSource.volume = _audioVolume;
             SyncAudio(song, t);
             SyncPreview(song, t, songLengths[song]);
-            if (moveStations) MoveStations(song, t);
+            MoveStations(song, t);
             SetSeekBarTime(t);
             SetStatus(FormatTime(t) + " / " + FormatTime(songLengths[song]) + RangeLabel(song));
         }
@@ -834,7 +826,9 @@ namespace MmdWorld
             {
                 var slot = slots[s];
                 if (slot == null) continue;
-                var controller = segmentControllers[trackSegmentStart[TrackFor(song, s)] + k];
+                // 「その場」の枠は移動を抜いたクリップの Controller
+                int index = trackSegmentStart[TrackFor(song, s)] + k;
+                var controller = slot.IsInPlace() && inPlaceControllers != null && index < inPlaceControllers.Length ? inPlaceControllers[index] : segmentControllers[index];
                 for (int i = 0; i < slot.StationCount(); i++)
                 {
                     var station = slot.GetStation(i);
@@ -1036,9 +1030,10 @@ namespace MmdWorld
         }
 
         /// <summary>
-        /// 人が入っている枠のステーションを、曲の軌跡どおりに動かして回す。VRChat は座った人の体の位置と向きをステーションに固定するので、
-        /// ステーションを動かさないと、歩いたり回ったりする振りがその場の足踏みになる。
-        /// ほかの人のクライアントも座っている人を自分の手元のステーションの位置に出すので、全員の手元で同じように動かす。
+        /// 人が入っている枠のステーションを置く。振り付けの移動はステーションのクリップに入っているので、ステーションは曲の間は動かさない
+        /// （VR の視点はステーションに付いているので、動かすと視点も動く。以前は移動を抜いたクリップでステーションごと動かしていて、腰の揺れで視点が揺れた）。
+        /// 複数人のモーションは、ステーションをステージの中央（＋パートの立ち位置のずれ）に置き、そこからクリップの位置で踊る。
+        /// 踊っている人がスティック・WASD で動かした分（踊りながら動く）だけは足す。全員の手元で同じように置く。
         /// </summary>
         void MoveStations(int song, float t)
         {
@@ -1050,29 +1045,16 @@ namespace MmdWorld
                 var dancer = slot.GetDancer();
                 var station = slot.GetStationRoot();
                 if (dancer == null || station == null) continue;
-                // 軌跡は目の高さを 1 とした値なので、踊っている人のアバターの目の高さを掛ける。「その場で踊る」なら軌跡では動かさない
-                float eye = dancer.GetAvatarEyeHeightAsMeters();
                 int track = TrackFor(song, s);
-                var along = slot.IsInPlace() ? Vector3.zero : TrajectoryAt(track, t) * eye;
-                // 複数人のモーションは、ステージの中央からの位置（パートに入っている立ち位置）で踊る。1人の曲は枠の位置から
+                var along = Vector3.zero;
+                // 複数人のモーションは、ステージの中央からの位置（パートに入っている立ち位置）で踊る。1人の曲と「その場」の枠は、枠の位置で踊る
                 if (formation && !slot.IsInPlace() && stageOrigin != null && station.parent != null)
-                    along = station.parent.InverseTransformPoint(stageOrigin.TransformPoint(along + TrackOffset(track)));
+                    along = station.parent.InverseTransformPoint(stageOrigin.TransformPoint(TrackOffset(track)));
                 // 踊っている人がスティック・WASD で動かした分を足す
                 station.transform.localPosition = along + slot.GetDrive();
                 // 向きはステーションのクリップに入っているので回さない（回すと VR では視点も回る）
                 station.transform.localRotation = Quaternion.identity;
             }
-        }
-
-        /// <summary>トラックの時刻 t の、床の上の位置（目の高さを 1 とした値、ステーションの親の向きで）。</summary>
-        Vector3 TrajectoryAt(int track, float t)
-        {
-            if (trajCount == null || track < 0 || track >= trajCount.Length || trajCount[track] < 2) return Vector3.zero;
-            float f = Mathf.Clamp(t * trajRate[track], 0f, trajCount[track] - 1.001f);
-            int i = Mathf.FloorToInt(f);
-            float a = f - i;
-            int k = trajStart[track] + i;
-            return new Vector3(Mathf.Lerp(trajX[k], trajX[k + 1], a), 0f, Mathf.Lerp(trajZ[k], trajZ[k + 1], a));
         }
 
         /// <summary>視点（頭のトラッキング）とアバターの頭の骨の、ステーションから見た位置と向きをログに出す（logView）。</summary>

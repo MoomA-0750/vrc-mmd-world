@@ -111,9 +111,10 @@ namespace MmdWorld.EditorTools
                     trackClips.Add(part);
                 }
             }
-            // ふだんは移動を抜いたクリップにして、移動は DanceSystem がステーションごと動かして出す。travelInClip（試し）なら移動を残し、ステーションは動かさない
-            var stationClips = trackClips.Select((c, t) => WithFace(songs[trackSong[t]], settings.travelInClip ? c : MmdWorldLibrary.InPlaceClip(c), $"Track{t}_InPlace")).ToList();
+            // ステーションでは、振り付けの移動もクリップのまま踊る（ステーションは動かさない）。VR の視点はステーションに付いているので、体と頭が動いても視点は動かない。
+            // 「その場」の枠には、移動を抜いたクリップを使う
             var fullClips = trackClips.Select((c, t) => WithFace(songs[trackSong[t]], c, $"Track{t}")).ToList();
+            var inPlaceClips = trackClips.Select((c, t) => WithFace(songs[trackSong[t]], MmdWorldLibrary.InPlaceClip(c), $"Track{t}_InPlace")).ToList();
 
             // ステーション用の Controller は、曲 × 区切りの数だけ作り直す（前の分は丸ごと消す）
             AssetDatabase.DeleteAsset(StationDir);
@@ -123,15 +124,19 @@ namespace MmdWorld.EditorTools
             var segments = songs.Select(MmdWorldLibrary.Segments).ToList();
             // ステーション用の Controller はトラック × 区切り（区切りの時刻は曲ごとで、パートどうしは同じ）
             var segmentControllers = new List<RuntimeAnimatorController>();
+            var inPlaceControllers = new List<RuntimeAnimatorController>();
             var trackSegmentStart = new List<int>();
             for (int t = 0; t < trackClips.Count; t++)
             {
                 trackSegmentStart.Add(segmentControllers.Count);
                 var times = segments[trackSong[t]];
                 for (int k = 0; k < times.Count; k++)
-                    segmentControllers.Add(BuildStationController(stationClips[t], t, k, times[k]));
+                {
+                    segmentControllers.Add(BuildStationController(fullClips[t], t, k, times[k], ""));
+                    inPlaceControllers.Add(BuildStationController(inPlaceClips[t], t, k, times[k], "_InPlace"));
+                }
             }
-            Debug.Log($"[MmdWorld] ステーション用の Controller {segmentControllers.Count} 個（区切り: {string.Join(" / ", segments.Select(g => g.Count + " 個"))}、" +
+            Debug.Log($"[MmdWorld] ステーション用の Controller {segmentControllers.Count} 個 × 2（移動あり・その場）（区切り: {string.Join(" / ", segments.Select(g => g.Count + " 個"))}、" +
                       $"パート: {string.Join(" / ", songPartCount.Select(n => n + " 人"))}）");
             var previewController = BuildPreviewController(fullClips);
             var mannequinMaterial = LoadOrCreateMaterial(GeneratedDir + "/Mannequin.mat", new Color(0.85f, 0.85f, 0.9f));
@@ -172,7 +177,6 @@ namespace MmdWorld.EditorTools
             system.songAudio = songs.Select(s => s.audio).ToArray();
             system.songLengths = songs.Select(s => s.motion.length).ToArray();
             system.audioOffsets = songs.Select(s => s.audioOffset).ToArray();
-            FillTrajectories(system, trackClips);
             system.songPartStart = songPartStart.ToArray();
             system.songPartCount = songPartCount.ToArray();
             system.trackNames = trackClips.Select(MmdWorldLibrary.PartName).ToArray();
@@ -182,9 +186,9 @@ namespace MmdWorld.EditorTools
             system.trackLengths = fullClips.Select(c => c.length).ToArray();
             system.trackSegmentStart = trackSegmentStart.ToArray();
             system.stageOrigin = BuildStageOrigin();
-            system.moveStations = !settings.travelInClip;
             system.segmentTimes = segments.SelectMany(g => g).ToArray();
             system.segmentControllers = segmentControllers.ToArray();
+            system.inPlaceControllers = inPlaceControllers.ToArray();
             system.segmentStart = segments.Select((g, i) => segments.Take(i).Sum(x => x.Count)).ToArray();
             system.segmentCount = segments.Select(g => g.Count).ToArray();
             system.slots = slots.ToArray();
@@ -226,13 +230,13 @@ namespace MmdWorld.EditorTools
         // ---- 曲ごとのアニメーター ----
 
         /// <summary>曲 index の、時刻 startTime から踊り始めるステーション用の Controller。</summary>
-        static AnimatorController BuildStationController(AnimationClip clip, int track, int segment, float startTime)
+        static AnimatorController BuildStationController(AnimationClip clip, int track, int segment, float startTime, string suffix)
         {
-            string path = $"{StationDir}/Track{track}_Seg{segment}.controller";
+            string path = $"{StationDir}/Track{track}_Seg{segment}{suffix}.controller";
             var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
             var sm = controller.layers[0].stateMachine;
             var dance = sm.AddState("Dance");
-            // 体の移動は、DanceSystem がステーションごと動かして出すので、その場で踊るクリップを使う
+            // 移動ありのクリップ（ふだん）か、移動を抜いたクリップ（「その場」の枠）
             dance.motion = clip;
             // 区切りの時刻から始める（座った瞬間にこのステートが始まる）
             dance.cycleOffset = clip.length > 0f ? startTime / clip.length : 0f;
@@ -368,35 +372,6 @@ namespace MmdWorld.EditorTools
             var origin = new GameObject("StageOrigin");
             origin.transform.SetPositionAndRotation(new Vector3(0f, 0.02f, 4.5f), Quaternion.Euler(0f, 180f, 0f));
             return origin.transform;
-        }
-
-        static void FillTrajectories(DanceSystem system, List<AnimationClip> tracks)
-        {
-            var xs = new List<float>();
-            var zs = new List<float>();
-            var starts = new List<int>();
-            var counts = new List<int>();
-            var rates = new List<float>();
-            // 軌跡はトラック（曲 × パート）ごと
-            foreach (var track in tracks)
-            {
-                var tr = MmdWorldLibrary.Trajectory(track);
-                starts.Add(xs.Count);
-                counts.Add(tr != null ? tr.Count : 0);
-                rates.Add(tr != null ? tr.sampleRate : 1f);
-                if (tr == null)
-                {
-                    Debug.LogWarning($"[MmdWorld] {MmdWorldLibrary.PartName(track)} に軌跡が無い（取り込み直すと作られる）。このパートではステーションを動かさない");
-                    continue;
-                }
-                xs.AddRange(tr.x);
-                zs.AddRange(tr.z);
-            }
-            system.trajX = xs.ToArray();
-            system.trajZ = zs.ToArray();
-            system.trajStart = starts.ToArray();
-            system.trajCount = counts.ToArray();
-            system.trajRate = rates.ToArray();
         }
 
         // ---- お手本・着替えの台 ----

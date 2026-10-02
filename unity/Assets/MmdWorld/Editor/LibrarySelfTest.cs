@@ -200,6 +200,8 @@ namespace MmdWorld.EditorTools
                 var system = UnityEngine.Object.FindObjectsOfType<DanceSystem>(true).First();
                 int segTotal = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count * MmdWorldLibrary.Parts(sg).Count);
                 Check(system.segmentControllers.Length == segTotal && system.segmentControllers.All(c => c != null), $"区切り × パートの数だけ Controller がある: {system.segmentControllers.Length}");
+                Check(system.inPlaceControllers.Length == segTotal && system.inPlaceControllers.All(c => c != null) && system.inPlaceControllers[0] != system.segmentControllers[0],
+                      "「その場」用の Controller も同じ数だけある（移動ありとは別）");
                 int timesTotal = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
                 Check(system.segmentCount.Length == songCount && system.segmentTimes.Length == timesTotal && system.segmentTimes[system.segmentStart.Last()] == 0f, "区切りの表が曲ごとに 0 秒から並ぶ");
                 Check(Mathf.Approximately(system.countdownSeconds, 5f), "カウントダウンの秒数が入る");

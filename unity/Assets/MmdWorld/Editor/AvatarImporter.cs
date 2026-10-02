@@ -275,7 +275,8 @@ namespace MmdWorld.EditorTools
             }
             foreach (string pkg in copyPackages)
             {
-                // シェーダーの include などが相対パスなので、フォルダごと写す
+                // シェーダーの include などが相対パスなので、フォルダの形のまま写す。スクリプトは写さない
+                // （MA などツールのスクリプトがワールドのプロジェクトでコンパイルされると、アバターの SDK が無くてエラーになる）
                 CopyDirectory(Path.Combine(job.project, "Packages", pkg), Path.Combine(ProjectRoot, ImportRoot, "_Packages", pkg));
             }
 
@@ -311,10 +312,15 @@ namespace MmdWorld.EditorTools
             if (File.Exists(src + ".meta")) File.Copy(src + ".meta", dst + ".meta", true);
         }
 
+        /// <summary>写さないファイル（スクリプトとその設定）。.meta は本体と同じに扱う</summary>
+        static readonly HashSet<string> ScriptExtensions = new HashSet<string> { ".cs", ".asmdef", ".asmref", ".dll", ".rsp", ".so", ".dylib", ".bundle" };
+
         static void CopyDirectory(string src, string dst)
         {
             foreach (string file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
             {
+                string body = file.EndsWith(".meta") ? file.Substring(0, file.Length - 5) : file;
+                if (ScriptExtensions.Contains(Path.GetExtension(body).ToLowerInvariant())) continue;
                 string target = Path.Combine(dst, file.Substring(src.Length).TrimStart('\\', '/'));
                 Directory.CreateDirectory(Path.GetDirectoryName(target));
                 File.Copy(file, target, true);

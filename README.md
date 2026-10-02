@@ -39,7 +39,7 @@ VR 用の部品（アバター SDK の VRCSDK3A.dll、下の「VR で踊らせ�
 
 1. アバターのプロジェクトを、裏でバッチモードの Unity で開く（取り込むあいだ数分は、そのプロジェクトを Unity で開かないでおく）。書き出し用のスクリプト（`Editor/AvatarExporter~/MmdWorldAvatarExport.cs`）を一時的に置いて動かす
 2. NDMF があれば手動ベイク（`AvatarProcessor.ManualProcessAvatar`）で、Modular Avatar などをビルドのときと同じように適用した完成形を作る。ワールドで使えない部品（Avatar Descriptor・ツールの部品）は外し、PhysBone は残す
-3. 使っているファイルを GUID ごと `Assets/LocalOnly/Avatars/<名前>/` に写す（ワールドに同じ GUID があれば写さない）。パッケージのもののうち見た目に要るもの（lilToon などのシェーダー）は、パッケージのフォルダごと `Assets/LocalOnly/Avatars/_Packages/` に写す。VRChat の SDK や FaceEmo などのツールのパッケージは入れない（アバターの SDK はワールドの SDK と同居できない。ワールドの `Packages` は変えない）
+3. 使っているファイルを GUID ごと `Assets/LocalOnly/Avatars/<名前>/` に写す（ワールドに同じ GUID があれば写さない）。パッケージのもののうち見た目に要るもの（lilToon などのシェーダー）は、パッケージのフォルダの形のまま `Assets/LocalOnly/Avatars/_Packages/` に写す（スクリプトは写さない）。VRChat の SDK や FaceEmo などのツールのパッケージは入れない（アバターの SDK はワールドの SDK と同居できない。ワールドの `Packages` は変えない）
 4. アバターのプロジェクトに置いたスクリプトと、書き出し・ベイクで増えたものを消し、お手本か枠のアバターに登録する
 
 `Assets/LocalOnly` はリポジトリに入らない。購入したアバターを入れたワールドを公開すると多くの規約で再配布にあたるので、公開するワールドでは規約で許されたものだけを使う。

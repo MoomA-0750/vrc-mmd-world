@@ -78,7 +78,8 @@ namespace MmdWorld.EditorTools
                             words.Contains("mobile"));
                         break;
                     case "BuildAndTestVR":
-                        BuildAndTest(false, "", "", 0, vr: true);
+                        // BuildAndTestVR [auto] [immobilize]: auto なら入って 12 秒後に自分で枠1に入って再生する。immobilize ならこのビルドだけステーションを Immobilize にする
+                        BuildAndTest(false, "", "", 0, vr: true, vrAuto: words.Contains("auto"), immobilize: words.Contains("immobilize"));
                         break;
                     case "SelfTest":
                     {
@@ -118,7 +119,7 @@ namespace MmdWorld.EditorTools
 
         public static void BuildAndTest(bool autoTest) => BuildAndTest(autoTest, "", "", 0);
 
-        public static async void BuildAndTest(bool autoTest, string avatarId, string restoreAvatarId, int scenario, bool mobile = false, bool vr = false)
+        public static async void BuildAndTest(bool autoTest, string avatarId, string restoreAvatarId, int scenario, bool mobile = false, bool vr = false, bool vrAuto = false, bool immobilize = false)
         {
             if (EditorApplication.isPlaying)
             {
@@ -170,6 +171,14 @@ namespace MmdWorld.EditorTools
                 UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(system);
                 if (mobile) SetStationMobility(VRC.SDKBase.VRCStation.Mobility.Mobile);
             }
+            // VR で確かめるビルドでは、視点の位置をログに出す。auto なら自分で枠1に入って再生する（終わったら戻す）
+            if (system != null && vr)
+            {
+                system.logView = true;
+                if (vrAuto) { system.autoTestDelay = 12f; system.autoTestScenario = 0; }
+                UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(system);
+                if (immobilize) SetStationMobility(VRC.SDKBase.VRCStation.Mobility.Immobilize);
+            }
             try
             {
                 // 開いたばかりの SDK のパネルは準備に数秒かかり、その間は「パネルを開いて」で断られるので、待って呼び直す
@@ -196,7 +205,21 @@ namespace MmdWorld.EditorTools
             {
                 // SDK はビルドのときにシーンを読み込み直すので、ビルド前の参照は切れている。今のシーンから探し直して後片付けする
                 if (autoTest) CleanUpAutoTest();
-                if (vr) SetTabletTouchLog(false);
+                if (vr)
+                {
+                    SetTabletTouchLog(false);
+                    var s = UnityEngine.Object.FindObjectsOfType<DanceSystem>(true).FirstOrDefault();
+                    if (s != null)
+                    {
+                        s.logView = false;
+                        s.autoTestDelay = 0f;
+                        UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(s);
+                    }
+                    SetStationMobility(VRC.SDKBase.VRCStation.Mobility.ImmobilizeForVehicle);
+                    var scene = EditorSceneManager.GetActiveScene();
+                    EditorSceneManager.MarkSceneDirty(scene);
+                    EditorSceneManager.SaveScene(scene);
+                }
             }
         }
 

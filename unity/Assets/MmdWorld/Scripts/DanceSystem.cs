@@ -134,6 +134,10 @@ namespace MmdWorld
         [Tooltip("自動確認の流れ。0: 再生とシーク　1: プレビュー・範囲再生・ループ・途中からの参加　2: 手元のタブレット")]
         public int autoTestScenario = 0;
 
+        [Tooltip("座っている間、視点（頭のトラッキング）とアバターの頭の、ステーションから見た位置を 0.5 秒ごとにログに出す（仮想の VR で、視点が揺れるかを測る。DevCommands の BuildAndTestVR が入れる）")]
+        public bool logView;
+        float _nextViewLog;
+
         bool _autoTestSwitched;
 
         [UdonSynced] int _songIndex;
@@ -755,6 +759,7 @@ namespace MmdWorld
 
         void Update()
         {
+            if (logView && _localStation != null && Time.time >= _nextViewLog) LogView();
             if (!_playing)
             {
                 if (_localPreview) UpdateLocalPreview();
@@ -1066,6 +1071,18 @@ namespace MmdWorld
             float a = f - i;
             int k = trajStart[track] + i;
             return new Vector3(Mathf.Lerp(trajX[k], trajX[k + 1], a), 0f, Mathf.Lerp(trajZ[k], trajZ[k + 1], a));
+        }
+
+        /// <summary>視点（頭のトラッキング）とアバターの頭の骨の、ステーションから見た位置と向きをログに出す（logView）。</summary>
+        void LogView()
+        {
+            _nextViewLog = Time.time + 0.5f;
+            var local = Networking.LocalPlayer;
+            var root = _localStation.transform;
+            var head = local.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
+            var bone = local.GetBonePosition(HumanBodyBones.Head);
+            Debug.Log("[MmdWorld] 視点: " + root.InverseTransformPoint(head.position).ToString("F3") + " 向き " + (Quaternion.Inverse(root.rotation) * head.rotation).eulerAngles.ToString("F1")
+                      + " 頭の骨 " + root.InverseTransformPoint(bone).ToString("F3"));
         }
 
         /// <summary>トラックの立ち位置のずれ（ステージの原点の向きで、メートル）。</summary>

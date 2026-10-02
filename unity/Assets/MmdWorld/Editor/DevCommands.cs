@@ -32,6 +32,7 @@ namespace MmdWorld.EditorTools
     ///   FindAvatars プロジェクト  アバターのプロジェクトのアバターを探して Temp/MmdAvatars.txt に書く（番号・ファイル・名前）
     ///   ImportAvatar プロジェクト 番号 [preview|slot]  FindAvatars の番号のアバターを取り込み、結果を Temp/MmdAvatarImport.txt に書く
     ///   InspectAvatar prefab  アバターの描画（SkinnedMeshRenderer）の骨が頭・体のどこに付いているかと、PhysBone の数を Temp/MmdAvatarInspect.txt に書く
+    ///   AddPreview prefab  お手本に足す（取り込んだアバターを、組み立て直して確かめるとき）
     ///   Setting 名前 値   MmdWorldSettings の bool・int・float・string の欄を変えて保存する（試しの切り替え用）
     ///   ShowDetect [フォルダ]  マネージャーを開き、探すフォルダを変えて「フォルダから曲を探す」を押したところにする（登録はしない）
     ///   Refresh           AssetDatabase.Refresh
@@ -126,6 +127,15 @@ namespace MmdWorld.EditorTools
                     case "InspectAvatar":
                         File.WriteAllText("Temp/MmdAvatarInspect.txt", InspectAvatar(AssetDatabase.LoadAssetAtPath<GameObject>(string.Join(" ", words.Skip(1)))));
                         break;
+                    case "AddPreview":
+                    {
+                        var settings = MmdWorldSettings.LoadOrCreate();
+                        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(string.Join(" ", words.Skip(1)));
+                        if (prefab != null && !settings.previewDancers.Contains(prefab)) settings.previewDancers.Add(prefab);
+                        EditorUtility.SetDirty(settings);
+                        AssetDatabase.SaveAssets();
+                        break;
+                    }
                     case "Setting":
                     {
                         var settings = MmdWorldSettings.LoadOrCreate();

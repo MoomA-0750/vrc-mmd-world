@@ -214,6 +214,9 @@ namespace MmdWorld.EditorTools
                 var panelButtons = UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Where(b => !tablet.buttons.Contains(b)).ToList();
                 Check(panelButtons.Count == tablet.buttons.Length - 1 && panelButtons.All(b => b.GetComponent<Collider>() != null && b.target == system),
                       "舞台の横のパネルは、タブレットと同じボタン（「閉じる」以外）を、当たり判定つきで持つ");
+                Check(panelButtons.All(b => b.GetComponent<Collider>().isTrigger) && GameObject.Find("Panel").GetComponentsInChildren<Collider>(true).All(c => c.isTrigger),
+                      "舞台の横のパネルの当たり判定はトリガーだけ（体当たりしてもすり抜ける）");
+                Check(GameObject.Find("Mirror") == null, "客席の鏡は置かない");
                 Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).All(b => b.eventName != nameof(DanceSlot.NextAvatar)), "枠ごとの、アバターを順に切り替えるボタンは無い");
                 if (local != null)
                 {

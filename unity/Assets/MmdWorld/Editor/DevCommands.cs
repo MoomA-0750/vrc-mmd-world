@@ -30,6 +30,7 @@ namespace MmdWorld.EditorTools
     ///   OpenAudioOffset   音のずれを合わせるウィンドウを開く
     ///   FindAvatars プロジェクト  アバターのプロジェクトのアバターを探して Temp/MmdAvatars.txt に書く（番号・ファイル・名前）
     ///   ImportAvatar プロジェクト 番号 [preview|slot]  FindAvatars の番号のアバターを取り込み、結果を Temp/MmdAvatarImport.txt に書く
+    ///   InspectAvatar prefab  アバターの描画（SkinnedMeshRenderer）の骨が頭・体のどこに付いているかと、PhysBone の数を Temp/MmdAvatarInspect.txt に書く
     ///   Setting 名前 値   MmdWorldSettings の bool・int・float・string の欄を変えて保存する（試しの切り替え用）
     ///   ShowDetect [フォルダ]  マネージャーを開き、探すフォルダを変えて「フォルダから曲を探す」を押したところにする（登録はしない）
     ///   Refresh           AssetDatabase.Refresh
@@ -121,6 +122,9 @@ namespace MmdWorld.EditorTools
                         EditorApplication.update += poll;
                         break;
                     }
+                    case "InspectAvatar":
+                        File.WriteAllText("Temp/MmdAvatarInspect.txt", InspectAvatar(AssetDatabase.LoadAssetAtPath<GameObject>(string.Join(" ", words.Skip(1)))));
+                        break;
                     case "Setting":
                     {
                         var settings = MmdWorldSettings.LoadOrCreate();
@@ -262,6 +266,31 @@ namespace MmdWorld.EditorTools
                     EditorSceneManager.SaveScene(scene);
                 }
             }
+        }
+
+        /// <summary>アバターの描画ごとに、根元の骨・骨の数・頭の骨の下の骨の数を、PhysBone ごとに根元を並べる（髪が頭に付いているかを見る）。</summary>
+        static string InspectAvatar(GameObject prefab)
+        {
+            if (prefab == null) return "prefab が無い";
+            var lines = new System.Collections.Generic.List<string>();
+            var animator = prefab.GetComponent<Animator>();
+            var head = animator != null && animator.isHuman ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            string Path(Transform t) => t == null ? "(なし)" : AnimationUtility.CalculateTransformPath(t, prefab.transform);
+            lines.Add($"Animator: {(animator != null ? (animator.isHuman ? "Humanoid" : "Generic") : "なし")} / 頭の骨: {Path(head)}");
+            foreach (var r in prefab.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                int underHead = head != null ? r.bones.Count(b => b != null && b.IsChildOf(head)) : 0;
+                int missing = r.bones.Count(b => b == null);
+                lines.Add($"描画 {Path(r.transform)}: 根元 {Path(r.rootBone)}、骨 {r.bones.Length}（頭の下 {underHead}、見つからない {missing}）、有効 {r.gameObject.activeInHierarchy && r.enabled}");
+            }
+            foreach (var c in prefab.GetComponentsInChildren<Component>(true).Where(c => c != null && c.GetType().Name.Contains("PhysBone")))
+            {
+                var rootField = c.GetType().GetField("rootTransform");
+                var root = rootField?.GetValue(c) as Transform;
+                lines.Add($"{c.GetType().Name} {Path(c.transform)}: 根元 {Path(root != null ? root : c.transform)}（頭の下 {(head != null && (root != null ? root : c.transform).IsChildOf(head))}）");
+            }
+            lines.Add("見つからないスクリプト: " + prefab.GetComponentsInChildren<Transform>(true).Sum(t => GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(t.gameObject)));
+            return string.Join("\n", lines);
         }
 
         static void SetTabletTouchLog(bool on)

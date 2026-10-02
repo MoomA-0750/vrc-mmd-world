@@ -34,6 +34,8 @@ namespace MmdWorld.EditorTools
             EditorGUILayout.Space(12);
             DrawSlotAvatars(settings, songs);
             EditorGUILayout.Space(12);
+            DrawAvatarImport();
+            EditorGUILayout.Space(12);
             DrawPedestals(settings);
             EditorGUILayout.Space(12);
             DrawWorld(settings);
@@ -223,6 +225,85 @@ namespace MmdWorld.EditorTools
                     if (GUILayout.Button("閉じる")) _detected = null;
                 }
             }
+        }
+
+        // アバターのプロジェクトから取り込む: 選んだプロジェクト・見つけたアバター・書き出し中の仕事
+        string _avatarProject;
+        List<AvatarImporter.Candidate> _avatarCandidates;
+        static AvatarImporter.Job _avatarJob;
+
+        /// <summary>PC のアバターのプロジェクトから、アバターをお手本・枠のアバターとして取り込む（AvatarImporter）。</summary>
+        void DrawAvatarImport()
+        {
+            EditorGUILayout.LabelField("アバターのプロジェクトから取り込む", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("VRChat のアバター用に改変したプロジェクトから、アバターを取り込む。Modular Avatar などは NDMF の手動ベイクで適用した完成形を取り込み、使っているファイルも一緒に写す（Assets/LocalOnly/Avatars の下。リポジトリには入らない）。" +
+                                       "取り込むあいだ（数分）は、そのプロジェクトを Unity で開かないでおく", EditorStyles.wordWrappedMiniLabel);
+            if (_avatarJob != null)
+            {
+                EditorGUILayout.HelpBox($"書き出し中…（{(int)(System.DateTime.Now - _avatarJob.started).TotalSeconds} 秒）{_avatarJob.candidate}", MessageType.Info);
+                return;
+            }
+            var projects = AvatarImporter.Projects();
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                int index = Mathf.Max(0, projects.IndexOf(_avatarProject));
+                if (projects.Count > 0)
+                {
+                    int picked = EditorGUILayout.Popup("プロジェクト", projects.Contains(_avatarProject) ? index : -1, projects.Select(p => Path.GetFileName(p.TrimEnd('\\', '/'))).ToArray());
+                    if (picked >= 0 && picked < projects.Count && projects[picked] != _avatarProject) { _avatarProject = projects[picked]; _avatarCandidates = null; }
+                }
+                else EditorGUILayout.LabelField("プロジェクト", string.IsNullOrEmpty(_avatarProject) ? "（VCC に登録されたアバターのプロジェクトが無い）" : _avatarProject);
+                if (GUILayout.Button("フォルダを選ぶ…", GUILayout.Width(110)))
+                {
+                    string folder = EditorUtility.OpenFolderPanel("アバターのプロジェクト", _avatarProject ?? "", "");
+                    if (!string.IsNullOrEmpty(folder)) { _avatarProject = folder; _avatarCandidates = null; }
+                }
+            }
+            using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(_avatarProject)))
+                if (GUILayout.Button("アバターを探す")) _avatarCandidates = AvatarImporter.FindAvatars(_avatarProject);
+            if (_avatarCandidates == null) return;
+            if (_avatarCandidates.Count == 0) EditorGUILayout.LabelField("アバター（VRC Avatar Descriptor が付いたもの）が見つかりませんでした", EditorStyles.wordWrappedMiniLabel);
+            foreach (var c in _avatarCandidates)
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUILayout.LabelField(new GUIContent(string.IsNullOrEmpty(c.name) ? Path.GetFileNameWithoutExtension(c.file) : c.name, c.file), GUILayout.MinWidth(120));
+                    EditorGUILayout.LabelField(c.file, EditorStyles.miniLabel, GUILayout.MinWidth(120));
+                    if (GUILayout.Button("お手本に", GUILayout.Width(70))) StartAvatarImport(c, AvatarImporter.Role.Preview);
+                    if (GUILayout.Button("枠のアバターに", GUILayout.Width(100))) StartAvatarImport(c, AvatarImporter.Role.SlotAvatar);
+                }
+        }
+
+        void StartAvatarImport(AvatarImporter.Candidate candidate, AvatarImporter.Role role)
+        {
+            try
+            {
+                _avatarJob = AvatarImporter.Start(_avatarProject, candidate, role);
+                EditorApplication.update += PollAvatarImport;
+            }
+            catch (System.Exception e)
+            {
+                Show("取り込めませんでした: " + e.Message, MessageType.Error);
+            }
+            GUIUtility.ExitGUI();
+        }
+
+        void PollAvatarImport()
+        {
+            Repaint();
+            if (_avatarJob == null) { EditorApplication.update -= PollAvatarImport; return; }
+            var result = AvatarImporter.Poll(_avatarJob);
+            if (result == null) return;
+            EditorApplication.update -= PollAvatarImport;
+            var role = _avatarJob.role;
+            _avatarJob = null;
+            if (result.error != null)
+            {
+                Show("取り込めませんでした: " + result.error, MessageType.Error);
+                return;
+            }
+            Show($"{result.prefab.name} を{(role == AvatarImporter.Role.Preview ? "お手本" : "枠のアバター")}に取り込みました（写したファイル {result.copied}、ワールドに元からあったもの {result.skipped}" +
+                 (result.packages.Count > 0 ? "、入れたパッケージ " + string.Join("、", result.packages) : "") + "）。" +
+                 (result.messages.Count > 0 ? "\n" + string.Join("\n", result.messages) : "") + "\n「ワールドを組み立て直す」でシーンに反映されます", MessageType.Info);
         }
 
         /// <summary>曲の一覧の書き出し・読み込み（JSON は設定だけ、.unitypackage は素材ごと）。</summary>

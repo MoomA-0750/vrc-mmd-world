@@ -28,6 +28,8 @@ namespace MmdWorld.EditorTools
     ///   SelfTest          マネージャーまわりの自己テスト（LibrarySelfTest）。結果はコンソールに [MmdWorld.SelfTest] で出る
     ///   OpenManager       マネージャーのウィンドウを開く
     ///   OpenAudioOffset   音のずれを合わせるウィンドウを開く
+    ///   FindAvatars プロジェクト  アバターのプロジェクトのアバターを探して Temp/MmdAvatars.txt に書く（番号・ファイル・名前）
+    ///   ImportAvatar プロジェクト 番号 [preview|slot]  FindAvatars の番号のアバターを取り込み、結果を Temp/MmdAvatarImport.txt に書く
     ///   Setting 名前 値   MmdWorldSettings の bool・int・float・string の欄を変えて保存する（試しの切り替え用）
     ///   ShowDetect [フォルダ]  マネージャーを開き、探すフォルダを変えて「フォルダから曲を探す」を押したところにする（登録はしない）
     ///   Refresh           AssetDatabase.Refresh
@@ -95,6 +97,30 @@ namespace MmdWorld.EditorTools
                         MmdWorldManagerWindow.Open();
                         EditorWindow.GetWindow<MmdWorldManagerWindow>().ShowDetected(words.Length > 1 ? string.Join(" ", words.Skip(1)) : null);
                         break;
+                    case "FindAvatars":
+                    {
+                        var found = AvatarImporter.FindAvatars(words[1]);
+                        File.WriteAllLines("Temp/MmdAvatars.txt", found.Select((c, i) => $"{i}\t{c.file}\t{c.name}"));
+                        break;
+                    }
+                    case "ImportAvatar":
+                    {
+                        var candidate = AvatarImporter.FindAvatars(words[1])[int.Parse(words[2])];
+                        var role = words.Length > 3 && words[3] == "slot" ? AvatarImporter.Role.SlotAvatar : AvatarImporter.Role.Preview;
+                        File.WriteAllText("Temp/MmdAvatarImport.txt", "書き出し中");
+                        var job = AvatarImporter.Start(words[1], candidate, role);
+                        EditorApplication.CallbackFunction poll = null;
+                        poll = () =>
+                        {
+                            var result = AvatarImporter.Poll(job);
+                            if (result == null) return;
+                            EditorApplication.update -= poll;
+                            File.WriteAllText("Temp/MmdAvatarImport.txt", result.error != null ? "失敗: " + result.error
+                                : $"成功: {AssetDatabase.GetAssetPath(result.prefab)}\n写した {result.copied}・元からある {result.skipped}\nパッケージ {string.Join(", ", result.packages)}\n{string.Join("\n", result.messages)}");
+                        };
+                        EditorApplication.update += poll;
+                        break;
+                    }
                     case "Setting":
                     {
                         var settings = MmdWorldSettings.LoadOrCreate();

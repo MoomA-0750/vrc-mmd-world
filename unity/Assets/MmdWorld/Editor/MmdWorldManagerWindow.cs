@@ -155,6 +155,16 @@ namespace MmdWorld.EditorTools
         List<bool> _detectedPicked;
         List<string> _detectedSkipped;
 
+        /// <summary>探すフォルダを変えて（null なら今のまま）、「フォルダから曲を探す」を押したところにする（DevCommands から）。</summary>
+        public void ShowDetected(string folder)
+        {
+            var settings = MmdWorldSettings.LoadOrCreate();
+            if (!string.IsNullOrEmpty(folder)) { settings.autoAddFolder = folder; Save(settings); }
+            _detected = MmdWorldLibrary.DetectSongs(settings, out _detectedSkipped);
+            _detectedPicked = _detected.Select(_ => true).ToList();
+            Repaint();
+        }
+
         /// <summary>
         /// フォルダの .vmd から曲を作る: 探すフォルダ、「フォルダから曲を探す」（登録する前に、どう登録するかの一覧を見せる）、組み立てのときに自動で作るか（初期は切る）。
         /// </summary>

@@ -28,6 +28,7 @@ namespace MmdWorld.EditorTools
     ///   SelfTest          マネージャーまわりの自己テスト（LibrarySelfTest）。結果はコンソールに [MmdWorld.SelfTest] で出る
     ///   OpenManager       マネージャーのウィンドウを開く
     ///   OpenAudioOffset   音のずれを合わせるウィンドウを開く
+    ///   ShowDetect [フォルダ]  マネージャーを開き、探すフォルダを変えて「フォルダから曲を探す」を押したところにする（登録はしない）
     ///   Refresh           AssetDatabase.Refresh
     /// </summary>
     [InitializeOnLoad]
@@ -88,6 +89,10 @@ namespace MmdWorld.EditorTools
                         System.IO.File.WriteAllLines("Temp/MmdSelfTest.txt", new[] { failures.Count == 0 ? "成功" : "失敗 " + failures.Count + " 件" }.Concat(failures));
                         break;
                     }
+                    case "ShowDetect":
+                        MmdWorldManagerWindow.Open();
+                        EditorWindow.GetWindow<MmdWorldManagerWindow>().ShowDetected(words.Length > 1 ? string.Join(" ", words.Skip(1)) : null);
+                        break;
                     case "OpenAudioOffset":
                         AudioOffsetWindow.Open();
                         break;

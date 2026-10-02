@@ -30,3 +30,6 @@ unity/Assets/Scenes.meta
 tools/vrsim-hmd/include/
 tools/vrsim-hmd/mmdhmd/bin/
 tools/vrsim-hmd/build/
+# 取り込んだアバターのために Assets/LocalOnly に写した lilToon が作る設定（PC ごと）
+unity/ProjectSettings/lilToonSetting.json
+unity/ProjectSettings/lilToonSetting.json.meta

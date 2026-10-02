@@ -199,7 +199,7 @@ namespace MmdWorld.EditorTools
             };
             Directory.CreateDirectory(job.workDir);
             string args = $"-batchmode -quit -projectPath \"{project}\" -executeMethod MmdWorldAvatarExport.Run -logFile \"{job.Log}\" " +
-                          $"-mmdFile \"{candidate.file}\" -mmdName \"{candidate.name}\" -mmdOut \"{job.Manifest}\"";
+                          $"-mmdFile \"{candidate.file}\" -mmdName \"{(string.IsNullOrEmpty(candidate.name) ? "-" : candidate.name)}\" -mmdOut \"{job.Manifest}\"";
             job.process = Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, CreateNoWindow = true });
             Debug.Log($"[MmdWorld] アバターの書き出しを始めた: {project} の {candidate}");
             return job;

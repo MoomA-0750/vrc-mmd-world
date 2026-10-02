@@ -52,7 +52,9 @@ public static class MmdWorldAvatarExport
         string outJson = Arg("-mmdOut");
         try
         {
-            Export(Arg("-mmdFile"), Arg("-mmdName"), manifest);
+            // 名前が空のときは「-」が来る（空の引数は Unity に渡らない）。そのファイルの最初のアバターを使う
+            string name = Arg("-mmdName");
+            Export(Arg("-mmdFile"), name == "-" ? "" : name, manifest);
         }
         catch (Exception e)
         {

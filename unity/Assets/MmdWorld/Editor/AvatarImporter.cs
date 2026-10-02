@@ -24,6 +24,8 @@ namespace MmdWorld.EditorTools
     {
         public const string ImportRoot = "Assets/LocalOnly/Avatars";
         const string DescriptorGuid = "67cc4cb7839cd3741b63733d5adf0442";
+        // VRCSDK3A.dll の中の VRCAvatarDescriptor（同じ DLL のほかの部品と見分ける）
+        const string DescriptorFileId = "542108242";
         const string ExporterSource = "Assets/MmdWorld/Editor/AvatarExporter~/MmdWorldAvatarExport.cs";
         const string ExporterDir = "Assets/MmdWorldAvatarExport";
 
@@ -117,7 +119,7 @@ namespace MmdWorld.EditorTools
                 if (rel.StartsWith("Assets/ZZZ_GeneratedAssets/") || rel.StartsWith(ExporterDir)) continue;
                 string text;
                 try { text = File.ReadAllText(full); } catch (IOException) { continue; }
-                if (!text.Contains(DescriptorGuid)) continue;
+                if (!text.Contains($"fileID: {DescriptorFileId}, guid: {DescriptorGuid}")) continue;
                 var names = DescriptorObjectNames(text);
                 if (names.Count == 0) result.Add(new Candidate { file = rel, name = "" });
                 foreach (var n in names) result.Add(new Candidate { file = rel, name = n });
@@ -140,7 +142,7 @@ namespace MmdWorld.EditorTools
                     var name = Regex.Match(doc, @"^\s*m_Name: (.*)$", RegexOptions.Multiline);
                     if (name.Success) names[head.Groups[2].Value] = name.Groups[1].Value.Trim();
                 }
-                else if (head.Groups[1].Value == "114" && doc.Contains(DescriptorGuid))
+                else if (head.Groups[1].Value == "114" && doc.Contains($"m_Script: {{fileID: {DescriptorFileId}, guid: {DescriptorGuid}"))
                 {
                     var go = Regex.Match(doc, @"m_GameObject: \{fileID: (-?\d+)\}");
                     if (go.Success) owners.Add(go.Groups[1].Value);

@@ -16,7 +16,7 @@ namespace MmdWorld.EditorTools
     /// 2. そのプロジェクトをバッチモードの Unity で開き、AvatarExporter~/MmdWorldAvatarExport.cs を一時的に置いて動かす。
     ///    NDMF の手動ベイクで Modular Avatar などを適用した完成形を作り、ワールドで使えない部品を外して prefab にし、使うファイルを manifest.json に書く
     /// 3. 使うファイルを GUID ごと Assets/LocalOnly/Avatars/&lt;名前&gt;/ に写す（ワールドに同じ GUID があれば写さない）。
-    ///    パッケージ（lilToon など）のものは、ワールドに無ければ vrc-get で入れる（入れられなければフォルダごと写す）
+    ///    パッケージ（lilToon など）のうち見た目に要るものは、フォルダごと Assets/LocalOnly/Avatars/_Packages/ に写す（VRChat の SDK・ツールのパッケージは入れない）
     /// 4. アバターのプロジェクトに置いたもの・書き出しで増えたものを消し、お手本か枠のアバターに登録する
     /// Assets/LocalOnly はリポジトリに入らない（購入したアバターを公開しない）。
     /// </summary>
@@ -236,13 +236,22 @@ namespace MmdWorld.EditorTools
             string root = $"{ImportRoot}/{safe}";
             if (!manifest.baked) result.messages.Add("NDMF が無いプロジェクトなので、Modular Avatar などは適用せずにそのまま取り込んだ");
 
-            // パッケージ（lilToon など）は、ワールドに無ければ vrc-get で入れる
+            // パッケージ（Packages/ の下）のものは、見た目に要るもの（シェーダー・マテリアル）を含むパッケージだけを、フォルダごと Assets/LocalOnly の下に写す。
+            // vrc-get でワールドのプロジェクトに入れると、リポジトリの vpm-manifest が変わってしまうので使わない。
+            // VRChat の SDK（com.vrchat.*）や、FaceEmo などのツールのパッケージは入れない（アバターの SDK はワールドの SDK と同居できない）
             var copyPackages = new List<string>();
             foreach (var pkg in manifest.packages)
             {
-                if (Directory.Exists(Path.Combine(ProjectRoot, "Packages", pkg.name))) continue;
-                if (InstallPackage(pkg)) result.packages.Add($"{pkg.name} {pkg.version}");
-                else copyPackages.Add(pkg.name);
+                if (pkg.name.StartsWith("com.vrchat.")) continue;
+                if (Directory.Exists(Path.Combine(ProjectRoot, "Packages", pkg.name)) || Directory.Exists(Path.Combine(ProjectRoot, ImportRoot, "_Packages", pkg.name))) continue;
+                bool render = manifest.files.Any(f => f.StartsWith($"Packages/{pkg.name}/") && RenderExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
+                if (!render)
+                {
+                    result.messages.Add($"パッケージ {pkg.name} は見た目に関係しないので入れない（{string.Join("、", manifest.files.Where(f => f.StartsWith($"Packages/{pkg.name}/")).Select(Path.GetFileName).Take(3))}）");
+                    continue;
+                }
+                copyPackages.Add(pkg.name);
+                result.packages.Add($"{pkg.name} {pkg.version}");
             }
 
             foreach (string file in manifest.files)
@@ -250,7 +259,7 @@ namespace MmdWorld.EditorTools
                 string src = Path.Combine(job.project, file);
                 if (file.StartsWith("Packages/"))
                 {
-                    // vrc-get で入れたものは写さない。入れられなかったパッケージは下でフォルダごと写す
+                    // パッケージのものは、下でパッケージのフォルダごと写す
                     continue;
                 }
                 string guid = MetaGuid(src + ".meta");
@@ -266,12 +275,10 @@ namespace MmdWorld.EditorTools
             }
             foreach (string pkg in copyPackages)
             {
-                // vrc-get で入れられなかったパッケージは、フォルダごと Assets の下に写す（シェーダーの include などが相対パスなので、フォルダごと）
+                // シェーダーの include などが相対パスなので、フォルダごと写す
                 CopyDirectory(Path.Combine(job.project, "Packages", pkg), Path.Combine(ProjectRoot, ImportRoot, "_Packages", pkg));
-                result.messages.Add($"パッケージ {pkg} は vrc-get で入れられなかったので、{ImportRoot}/_Packages/{pkg} に写した");
             }
 
-            if (result.packages.Count > 0) UnityEditor.PackageManager.Client.Resolve();
             AssetDatabase.Refresh();
             string prefabPath = $"{root}/{safe}.prefab";
             result.prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
@@ -287,26 +294,8 @@ namespace MmdWorld.EditorTools
                 result.messages.Add("外した部品: " + string.Join("、", manifest.removedComponents.Select(n => n.Split('.').Last()).Distinct()));
         }
 
-        static bool InstallPackage(Package pkg)
-        {
-            foreach (string args in new[] { $"install -y -p \"{ProjectRoot}\" {pkg.name} {pkg.version}", $"install -y -p \"{ProjectRoot}\" {pkg.name}" })
-            {
-                try
-                {
-                    var p = Process.Start(new ProcessStartInfo("vrc-get", args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true });
-                    string output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
-                    p.WaitForExit();
-                    Debug.Log($"[MmdWorld] vrc-get {args}: {p.ExitCode}\n{output}");
-                    if (p.ExitCode == 0) return true;
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning("[MmdWorld] vrc-get を動かせない: " + e.Message);
-                    return false;
-                }
-            }
-            return false;
-        }
+        /// <summary>見た目に要るファイル（これを含むパッケージだけを写す）</summary>
+        static readonly HashSet<string> RenderExtensions = new HashSet<string> { ".shader", ".cginc", ".hlsl", ".shadergraph", ".shadersubgraph", ".mat", ".png", ".psd", ".tga", ".jpg", ".exr", ".fbx" };
 
         static string MetaGuid(string meta)
         {

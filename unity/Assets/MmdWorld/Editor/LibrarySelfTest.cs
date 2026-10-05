@@ -226,7 +226,8 @@ namespace MmdWorld.EditorTools
                       && UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSystem.SlotButton)) == 8,
                       "タブレットと舞台の横のパネルの両方に、枠の列（4つ）と左右の一覧（7行ずつ）がある");
                 var tablet = UnityEngine.Object.FindObjectsOfType<DanceTablet>(true).First();
-                var panelButtons = UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Where(b => !tablet.buttons.Contains(b)).ToList();
+                // スマホ用の「メニュー」ボタンは除く
+                var panelButtons = UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Where(b => !tablet.buttons.Contains(b) && b.target != tablet).ToList();
                 Check(panelButtons.Count == tablet.buttons.Length - 1 && panelButtons.All(b => b.GetComponent<Collider>() != null && b.target == system),
                       "舞台の横のパネルは、タブレットと同じボタン（「閉じる」以外）を、当たり判定つきで持つ");
                 Check(panelButtons.All(b => b.GetComponent<Collider>().isTrigger) && GameObject.Find("Panel").GetComponentsInChildren<Collider>(true).All(c => c.isTrigger),
@@ -236,7 +237,8 @@ namespace MmdWorld.EditorTools
                       && tablet.touchToggle != null && !tablet.touchToggle.activeSelf && tablet.touchToggle.GetComponentInChildren<DanceButton>(true).eventName == nameof(DanceTablet.Toggle),
                       "スマホ用: タブレットのボタンに（ふだんは切った）当たり判定があり、「メニュー」ボタンがある");
                 Check(!GameObject.Find("Floor").GetComponent<Renderer>().enabled && GameObject.Find("Floor").GetComponent<Collider>() != null, "床は見えないが、当たり判定はある");
-                Check(slots.All(s => s.pad.sharedMaterial != null && s.pad.sharedMaterial.shader.name == "VRChat/Mobile/Standard Lite"), "台座などのマテリアルは Quest 向けの軽いシェーダー");
+                var pads = UnityEngine.Object.FindObjectsOfType<DanceSlot>(true).Select(s => s.pad != null && s.pad.sharedMaterial != null ? s.pad.sharedMaterial.shader.name : "(なし)").ToList();
+                Check(pads.All(n => n == "VRChat/Mobile/Standard Lite"), "台座などのマテリアルは Quest 向けの軽いシェーダー: " + string.Join(", ", pads.Distinct()));
                 Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).All(b => b.eventName != nameof(DanceSlot.NextAvatar)), "枠ごとの、アバターを順に切り替えるボタンは無い");
                 if (local != null)
                 {

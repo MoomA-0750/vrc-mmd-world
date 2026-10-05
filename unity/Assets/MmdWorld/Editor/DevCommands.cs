@@ -416,7 +416,7 @@ namespace MmdWorld.EditorTools
                     try
                     {
                         if (builder == null) throw new Exception("Open the SDK panel");
-                        await builder.BuildAndUpload(world, thumbnail);
+                        await builder.BuildAndUpload(world, thumbnailPath: thumbnail);
                         break;
                     }
                     catch (Exception e) when (attempt < 15 && e.Message.Contains("Open the SDK panel"))

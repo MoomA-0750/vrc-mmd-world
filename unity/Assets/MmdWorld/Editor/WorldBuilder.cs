@@ -531,7 +531,6 @@ namespace MmdWorld.EditorTools
             pad.name = "Pad";
             pad.transform.SetParent(root.transform, false);
             pad.transform.localScale = new Vector3(0.9f, 0.02f, 0.9f);
-            pad.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Pad.mat", Color.white);
             // 押しやすいように当たり判定だけ高くする。すり抜けられるようトリガーにする（ステーションから降りると台の上に立つので、ふつうの当たり判定だと高さ 1m の見えない箱の上に乗ってしまう）
             var capsule = pad.GetComponent<CapsuleCollider>();
             Object.DestroyImmediate(capsule);
@@ -539,13 +538,14 @@ namespace MmdWorld.EditorTools
             box.center = new Vector3(0f, 25f, 0f);
             box.size = new Vector3(1f, 50f, 1f);
             box.isTrigger = true;
-            pad.GetComponent<Renderer>().sharedMaterial = new Material(Shader.Find("Standard"));
+            // 枠ごとに色を変えるので、台座ごとにマテリアルを持つ（Quest でも軽いシェーダー）
+            pad.GetComponent<Renderer>().sharedMaterial = new Material(Shader.Find("VRChat/Mobile/Standard Lite") ?? Shader.Find("Standard"));
 
             var slot = UdonSharpUndo.AddComponent<DanceSlot>(pad);
             UdonSharpEditorUtility.GetBackingUdonBehaviour(slot).interactText = "ここで踊る / やめる";
 
             // ステーションは枠に2つ（A と B）。Controller は曲と区切りに合わせて DanceSystem が差し替え、シークでは交互に乗り換える。
-            // 2つとも同じ親の下に置き、踊りの軌跡どおりに親を動かす
+            // 2つとも同じ親の下に置く（親は曲の間は動かさない。複数人のモーションではステージの中央へ置く）
             var stationRoot = new GameObject("Stations");
             stationRoot.transform.SetParent(root.transform, false);
             var stationList = new List<VRCStation>();

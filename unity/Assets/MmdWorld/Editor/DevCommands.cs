@@ -393,8 +393,9 @@ namespace MmdWorld.EditorTools
                 // 権利の確認（Copyright ownership agreement）は本人の同意をもらってから送る（2026-10-05、本人「OKで進んでください」）。
                 // SDK のダイアログで OK を押したときと同じ処理（内部の Agree）を呼ぶ。同じセッションで同意済みならダイアログは出ない
                 var agree = typeof(VRC.SDKBase.VRCCopyrightAgreement).GetMethod("Agree", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
-                if (agree != null && !await (System.Threading.Tasks.Task<bool>)agree.Invoke(null, new object[] { pipeline.blueprintId }))
-                    throw new Exception("権利の確認を送れなかった（ID " + pipeline.blueprintId + "）");
+                bool agreed = agree != null && await (System.Threading.Tasks.Task<bool>)agree.Invoke(null, new object[] { pipeline.blueprintId });
+                File.AppendAllText("Temp/MmdUpload.txt", $"\nID {pipeline.blueprintId} / Agree {(agree != null ? "あり" : "なし")} / 結果 {agreed}");
+                if (!agreed) throw new Exception("権利の確認を送れなかった（ID " + pipeline.blueprintId + "）");
                 EditorUtility.SetDirty(pipeline);
                 EditorSceneManager.SaveScene(scene);
 

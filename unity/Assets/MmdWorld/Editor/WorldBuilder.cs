@@ -175,6 +175,7 @@ namespace MmdWorld.EditorTools
 
             system.songTitles = songs.Select(s => s.DisplayTitle).ToArray();
             system.songAudio = songs.Select(s => s.audio).ToArray();
+            foreach (var song in songs) SetAndroidAudio(song.audio);
             system.songLengths = songs.Select(s => s.motion.length).ToArray();
             system.audioOffsets = songs.Select(s => s.audioOffset).ToArray();
             system.songPartStart = songPartStart.ToArray();
@@ -503,7 +504,8 @@ namespace MmdWorld.EditorTools
             var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
             floor.name = "Floor";
             floor.transform.localScale = new Vector3(3f, 1f, 3f);
-            floor.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Floor.mat", new Color(0.35f, 0.37f, 0.4f));
+            // 床は見えなくする（本人の希望）。当たり判定は残して、その上を歩く
+            floor.GetComponent<Renderer>().enabled = false;
 
             var stage = GameObject.CreatePrimitive(PrimitiveType.Cube);
             stage.name = "Stage";
@@ -529,6 +531,7 @@ namespace MmdWorld.EditorTools
             pad.name = "Pad";
             pad.transform.SetParent(root.transform, false);
             pad.transform.localScale = new Vector3(0.9f, 0.02f, 0.9f);
+            pad.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMaterial(GeneratedDir + "/Pad.mat", Color.white);
             // 押しやすいように当たり判定だけ高くする。すり抜けられるようトリガーにする（ステーションから降りると台の上に立つので、ふつうの当たり判定だと高さ 1m の見えない箱の上に乗ってしまう）
             var capsule = pad.GetComponent<CapsuleCollider>();
             Object.DestroyImmediate(capsule);
@@ -945,15 +948,35 @@ namespace MmdWorld.EditorTools
 
         static Material LoadOrCreateMaterial(string path, Color color)
         {
+            // Quest（Android）でも軽いように、VRChat の SDK のモバイル用のシェーダーにする（PC でも同じものを使う）
+            var shader = Shader.Find("VRChat/Mobile/Standard Lite") ?? Shader.Find("Standard");
             var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (mat == null)
             {
-                mat = new Material(Shader.Find("Standard"));
+                mat = new Material(shader);
                 AssetDatabase.CreateAsset(mat, path);
             }
+            mat.shader = shader;
             mat.color = color;
             EditorUtility.SetDirty(mat);
             return mat;
+        }
+
+        /// <summary>
+        /// 曲の音声に、Android（Quest・スマホ）向けの取り込みの設定を入れる（自分で入れたものがあればそのまま）。
+        /// 曲の音声は全部ワールドに入っていて、最初に全部読み込まれるので、展開せずに圧縮したまま持つ（メモリが少ないため）。PC の設定は変えない。
+        /// </summary>
+        static void SetAndroidAudio(AudioClip clip)
+        {
+            if (clip == null) return;
+            var importer = AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(clip)) as AudioImporter;
+            if (importer == null || importer.ContainsSampleSettingsOverride("Android")) return;
+            var settings = importer.defaultSampleSettings;
+            settings.loadType = AudioClipLoadType.CompressedInMemory;
+            settings.compressionFormat = AudioCompressionFormat.Vorbis;
+            settings.quality = 0.6f;
+            importer.SetOverrideSampleSettings("Android", settings);
+            importer.SaveAndReimport();
         }
 
         static void EnsureFolder(string path)

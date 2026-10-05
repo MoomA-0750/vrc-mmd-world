@@ -756,6 +756,7 @@ namespace MmdWorld
             if (logView && _localStation != null && Time.time >= _nextViewLog) LogView();
             if (!_playing)
             {
+                SetPadsHidden(false);
                 if (_localPreview) UpdateLocalPreview();
                 return;
             }
@@ -767,6 +768,8 @@ namespace MmdWorld
             DriveLocal();
 
             float t = CurrentTime();
+            // モーションが動き始めたら台座を隠す（本人の希望）。止めたら戻す
+            SetPadsHidden(t >= 0f);
             float start = SegmentTime(song, _rangeStart);
             float end = RangeEndTime(song);
 
@@ -1055,6 +1058,16 @@ namespace MmdWorld
                 // 向きはステーションのクリップに入っているので回さない（回すと VR では視点も回る）
                 station.transform.localRotation = Quaternion.identity;
             }
+        }
+
+        bool _padsHidden;
+
+        void SetPadsHidden(bool hidden)
+        {
+            if (hidden == _padsHidden) return;
+            _padsHidden = hidden;
+            foreach (var slot in slots)
+                if (slot != null) slot.SetPadVisible(!hidden);
         }
 
         /// <summary>視点（頭のトラッキング）とアバターの頭の骨の、ステーションから見た位置と向きをログに出す（logView）。</summary>

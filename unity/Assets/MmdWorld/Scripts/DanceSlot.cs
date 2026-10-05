@@ -199,6 +199,12 @@ namespace MmdWorld
             return stations == null ? 0 : stations.Length;
         }
 
+        /// <summary>台座を見せる・隠す（曲が始まったら隠す。DanceSystem から）。当たり判定は残す。</summary>
+        public void SetPadVisible(bool visible)
+        {
+            if (pad != null) pad.enabled = visible;
+        }
+
         public Transform GetStationRoot()
         {
             return stationRoot;

@@ -16,6 +16,7 @@ namespace MmdWorld
     ///     踊っている間はアバターの手が踊りで動くので、アバターの手ではなく、実際の左右のコントローラーの位置を使う。右手の指先は目印の球で示す。
     ///     指先がボタンに近づくと明るくなり、面を押し込むと押したことになって、振動で知らせる。
     /// デスクトップ: T キーで出し入れする。踊ると視点が回ってマウスでは狙えないので、画面の下に固定して、ボタンに書いたキーで押す。
+    /// スマホ（タッチ）: 画面の右下の「メニュー」ボタンをタップして出し入れする。画面の下に固定し、ボタンはタップ（Interact）で押す。
     /// どちらも、スティック・WASD で移動しようとしたら消す。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
@@ -39,6 +40,12 @@ namespace MmdWorld
         [Tooltip("VR で指先を示す小さな球")]
         public Transform pointer;
         public string desktopToggleKey = "t";
+        [Tooltip("スマホ（タッチ）の人だけに出す、画面の隅の「メニュー」ボタン（タップで出し入れ）")]
+        public GameObject touchToggle;
+        [Tooltip("ボタンの当たり判定。スマホ（タッチ）のときだけ入れて、タップで押せるようにする")]
+        public Collider[] buttonColliders;
+        [Tooltip("スマホ: 「メニュー」ボタンを頭からどこに置くか（視点についてくる。画面の右下）")]
+        public Vector3 touchToggleOffset = new Vector3(0.09f, -0.07f, 0.3f);
 
         [Header("置き方")]
         [Tooltip("VR: 左手のコントローラーから、どれだけ上（ワールドの上向き）に浮かべるか（メートル）")]
@@ -106,6 +113,8 @@ namespace MmdWorld
         /// <summary>続けて握った回数</summary>
         int _gripsLeft;
         int _gripsRight;
+        /// <summary>スマホなど、タッチで操作しているか（VRChat の入力の方法が Touch）</summary>
+        bool _touch;
 
         void Start()
         {
@@ -115,9 +124,35 @@ namespace MmdWorld
             _pressed = new bool[buttons.Length];
             _shown = new int[buttons.Length];
             transform.localScale = Vector3.one * (_vr ? vrScale : 1f);
-            foreach (var label in desktopKeyLabels)
-                if (label != null) label.SetActive(!_vr);
+            _touch = !_vr && InputManager.GetLastUsedInputMethod() == VRCInputMethod.Touch;
             SetVisible(false);
+            ApplyInputMethod();
+        }
+
+        /// <summary>入力の方法が変わった（スマホの人がタッチで操作し始めたなど）。</summary>
+        public override void OnInputMethodChanged(VRCInputMethod inputMethod)
+        {
+            if (_vr) return;
+            bool touch = inputMethod == VRCInputMethod.Touch;
+            if (touch == _touch) return;
+            _touch = touch;
+            ApplyInputMethod();
+        }
+
+        /// <summary>タッチなら「メニュー」ボタンを出し、キーの表示を隠す。ボタンの当たり判定はタッチで出しているときだけ。</summary>
+        void ApplyInputMethod()
+        {
+            if (touchToggle != null) touchToggle.SetActive(_touch);
+            foreach (var label in desktopKeyLabels)
+                if (label != null) label.SetActive(!_vr && !_touch);
+            ApplyColliders();
+        }
+
+        void ApplyColliders()
+        {
+            if (buttonColliders == null) return;
+            foreach (var c in buttonColliders)
+                if (c != null) c.enabled = _touch && _visible;
         }
 
         public override void InputGrab(bool value, UdonInputEventArgs args)
@@ -258,6 +293,7 @@ namespace MmdWorld
             _armed = false;
             if (body != null) body.SetActive(visible);
             if (pointer != null) pointer.gameObject.SetActive(visible && _vr);
+            ApplyColliders();
             if (_pressed != null)
                 for (int i = 0; i < _pressed.Length; i++)
                 {
@@ -271,7 +307,8 @@ namespace MmdWorld
             if (!Utilities.IsValid(_local)) return;
             if (!_vr)
             {
-                UpdateDesktop();
+                if (_touch) UpdateTouch();
+                else UpdateDesktop();
                 return;
             }
             PollGrips();
@@ -332,6 +369,14 @@ namespace MmdWorld
                 }
                 SetShown(i, _pressed[i] ? 2 : over && p.z > -hoverDistance && p.z < 0.05f ? 1 : 0);
             }
+        }
+
+        /// <summary>スマホ（タッチ）: 「メニュー」ボタンを画面の右下に、出しているならタブレットを画面の下に置く（どちらも視点についてくる）。押すのはタップ（ボタンの Interact）。</summary>
+        void UpdateTouch()
+        {
+            var head = _local.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
+            if (touchToggle != null) touchToggle.transform.SetPositionAndRotation(head.position + head.rotation * touchToggleOffset, head.rotation);
+            if (_visible) transform.SetPositionAndRotation(head.position + head.rotation * desktopOffset, head.rotation);
         }
 
         void UpdateDesktop()

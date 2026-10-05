@@ -598,6 +598,7 @@ namespace MmdWorld.EditorTools
             public readonly List<Text> slotTexts = new List<Text>();
             public List<Text> modelRows, songRows;
             public readonly List<Text> inPlaceLabels = new List<Text>();
+            public readonly List<Collider> colliders = new List<Collider>();
         }
 
         /// <summary>
@@ -637,14 +638,14 @@ namespace MmdWorld.EditorTools
                 db.target = onTablet ? (UdonSharpBehaviour)tablet : system;
                 db.eventName = evt;
                 db.argument = argument;
-                if (onWorld)
-                {
-                    // 舞台の横のパネルは、デスクトップでは視線で、VR ではレーザーで Interact して押す。人がぶつからないようにトリガーにする
-                    var collider = image.gameObject.AddComponent<BoxCollider>();
-                    collider.size = new Vector3(w, h, 10f);
-                    collider.isTrigger = true;
-                    UdonSharpEditorUtility.GetBackingUdonBehaviour(db).interactText = string.IsNullOrEmpty(text) ? evt : text;
-                }
+                // 舞台の横のパネルは、デスクトップでは視線で、VR ではレーザーで Interact して押す。人がぶつからないようにトリガーにする。
+                // 手元のタブレットは、スマホ（タッチ）のときだけタップで押せるように当たり判定を付けておき、ふだんは切っておく（DanceTablet が入れる）
+                var collider = image.gameObject.AddComponent<BoxCollider>();
+                collider.size = new Vector3(w, h, 10f);
+                collider.isTrigger = true;
+                collider.enabled = onWorld;
+                ui.colliders.Add(collider);
+                UdonSharpEditorUtility.GetBackingUdonBehaviour(db).interactText = string.IsNullOrEmpty(text) ? evt : text;
                 UdonSharpEditorUtility.CopyProxyToUdon(db);
                 ui.buttons.Add(db);
                 ui.images.Add(image);
@@ -750,6 +751,8 @@ namespace MmdWorld.EditorTools
             tablet.desktopKeys = ui.keys.ToArray();
             tablet.desktopKeyLabels = ui.keyLabels.ToArray();
             tablet.pointer = pointer.transform;
+            tablet.buttonColliders = ui.colliders.ToArray();
+            tablet.touchToggle = BuildTouchToggle(tablet);
             UdonSharpEditorUtility.CopyProxyToUdon(tablet);
 
             // プレイヤーの体とぶつからないように Walkthrough レイヤーにする
@@ -758,8 +761,37 @@ namespace MmdWorld.EditorTools
             {
                 foreach (var t in rootGo.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = walkthrough;
                 pointer.layer = walkthrough;
+                // スマホでタップして押すボタンは、Interact が届くようにふつうのレイヤーに戻す（当たり判定はトリガーなので、体はぶつからない）
+                foreach (var c in ui.colliders) c.gameObject.layer = 0;
             }
             return (tablet, ui);
+        }
+
+        /// <summary>
+        /// スマホ（タッチ）の人だけに出す、画面の隅の「メニュー」ボタン。タップでタブレットを出し入れする（DanceTablet が視点の前に置き続ける）。
+        /// スマホには T キーも VR の握りも無く、踊っている間は舞台の横のパネルまで行けないため。
+        /// </summary>
+        static GameObject BuildTouchToggle(DanceTablet tablet)
+        {
+            var go = new GameObject("DanceTabletTouchToggle", typeof(RectTransform), typeof(Canvas));
+            go.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
+            var canvas = (RectTransform)go.transform;
+            canvas.sizeDelta = new Vector2(70f, 34f);
+            canvas.localScale = Vector3.one * 0.001f;
+            var sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            var image = UiImage(canvas, "Button_Toggle", Vector2.zero, new Vector2(70f, 34f), new Color(0.25f, 0.45f, 0.8f, 0.9f), sprite);
+            UiText(image.transform, "Label", "メニュー", 14, Vector2.zero, new Vector2(66f, 34f));
+            var collider = image.gameObject.AddComponent<BoxCollider>();
+            collider.size = new Vector3(70f, 34f, 10f);
+            collider.isTrigger = true;
+            var db = UdonSharpUndo.AddComponent<DanceButton>(image.gameObject);
+            db.target = tablet;
+            db.eventName = nameof(DanceTablet.Toggle);
+            UdonSharpEditorUtility.GetBackingUdonBehaviour(db).interactText = "メニュー";
+            UdonSharpEditorUtility.CopyProxyToUdon(db);
+            // タップ（Interact）で押せるように、ふつうのレイヤーのまま（当たり判定はトリガーなので、体はぶつからない）
+            go.SetActive(false);
+            return go;
         }
 
         /// <summary>uGUI の Image を1つ置く（位置と大きさはピクセル。親の中心が原点）。</summary>

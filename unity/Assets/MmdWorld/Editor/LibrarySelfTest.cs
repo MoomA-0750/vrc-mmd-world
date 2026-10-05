@@ -232,6 +232,11 @@ namespace MmdWorld.EditorTools
                 Check(panelButtons.All(b => b.GetComponent<Collider>().isTrigger) && GameObject.Find("Panel").GetComponentsInChildren<Collider>(true).All(c => c.isTrigger),
                       "舞台の横のパネルの当たり判定はトリガーだけ（体当たりしてもすり抜ける）");
                 Check(GameObject.Find("Mirror") == null, "客席の鏡は置かない");
+                Check(tablet.buttonColliders.Length == tablet.buttons.Length && tablet.buttonColliders.All(c => c != null && c.isTrigger && !c.enabled)
+                      && tablet.touchToggle != null && !tablet.touchToggle.activeSelf && tablet.touchToggle.GetComponentInChildren<DanceButton>(true).eventName == nameof(DanceTablet.Toggle),
+                      "スマホ用: タブレットのボタンに（ふだんは切った）当たり判定があり、「メニュー」ボタンがある");
+                Check(!GameObject.Find("Floor").GetComponent<Renderer>().enabled && GameObject.Find("Floor").GetComponent<Collider>() != null, "床は見えないが、当たり判定はある");
+                Check(slots.All(s => s.pad.sharedMaterial != null && s.pad.sharedMaterial.shader.name == "VRChat/Mobile/Standard Lite"), "台座などのマテリアルは Quest 向けの軽いシェーダー");
                 Check(UnityEngine.Object.FindObjectsOfType<DanceButton>(true).All(b => b.eventName != nameof(DanceSlot.NextAvatar)), "枠ごとの、アバターを順に切り替えるボタンは無い");
                 if (local != null)
                 {

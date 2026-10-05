@@ -386,6 +386,15 @@ namespace MmdWorld.EditorTools
                 if (pipeline == null) throw new Exception("シーンに PipelineManager が無い");
                 string id = File.Exists(WorldIdFile) ? File.ReadAllText(WorldIdFile).Trim() : "";
                 pipeline.blueprintId = id;
+                // 新しいワールドは、SDK のパネルから押したときと同じように先に ID を割り当てて保存しておく
+                // （アップロードの途中で SDK がシーンを読み込み直すので、保存していないと権利の確認を送るときに ID が空になって失敗した）
+                bool creating = string.IsNullOrEmpty(id);
+                if (creating) pipeline.AssignId(VRC.Core.PipelineManager.ContentType.world);
+                // 権利の確認（Copyright ownership agreement）は本人の同意をもらってから送る（2026-10-05、本人「OKで進んでください」）。
+                // SDK のダイアログで OK を押したときと同じ処理（内部の Agree）を呼ぶ。同じセッションで同意済みならダイアログは出ない
+                var agree = typeof(VRC.SDKBase.VRCCopyrightAgreement).GetMethod("Agree", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                if (agree != null && !await (System.Threading.Tasks.Task<bool>)agree.Invoke(null, new object[] { pipeline.blueprintId }))
+                    throw new Exception("権利の確認を送れなかった（ID " + pipeline.blueprintId + "）");
                 EditorUtility.SetDirty(pipeline);
                 EditorSceneManager.SaveScene(scene);
 

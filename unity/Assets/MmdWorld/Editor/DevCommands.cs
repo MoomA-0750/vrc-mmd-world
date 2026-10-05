@@ -33,6 +33,8 @@ namespace MmdWorld.EditorTools
     ///   ImportAvatar プロジェクト 番号 [preview|slot]  FindAvatars の番号のアバターを取り込み、結果を Temp/MmdAvatarImport.txt に書く
     ///   InspectAvatar prefab  アバターの描画（SkinnedMeshRenderer）の骨が頭・体のどこに付いているかと、PhysBone の数を Temp/MmdAvatarInspect.txt に書く
     ///   AddPreview prefab  お手本に足す（取り込んだアバターを、組み立て直して確かめるとき）
+    ///   SwitchPlatform android|windows  ビルドの対象を切り替える（アセットの取り込み直しで時間がかかる）
+    ///   BuildOnly         今の対象（Windows か Android）でワールドをビルドだけして（アップロードしない）、結果と大きさを Temp/MmdBuild.txt に書く
     ///   Setting 名前 値   MmdWorldSettings の bool・int・float・string の欄を変えて保存する（試しの切り替え用）
     ///   ShowDetect [フォルダ]  マネージャーを開き、探すフォルダを変えて「フォルダから曲を探す」を押したところにする（登録はしない）
     ///   Refresh           AssetDatabase.Refresh
@@ -136,6 +138,19 @@ namespace MmdWorld.EditorTools
                         AssetDatabase.SaveAssets();
                         break;
                     }
+                    case "SwitchPlatform":
+                    {
+                        bool android = words.Length > 1 && words[1] == "android";
+                        File.WriteAllText("Temp/MmdBuild.txt", "切り替え中");
+                        bool ok = android
+                            ? EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android)
+                            : EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64);
+                        File.WriteAllText("Temp/MmdBuild.txt", $"切り替え {(ok ? "済み" : "失敗")}: {EditorUserBuildSettings.activeBuildTarget}");
+                        break;
+                    }
+                    case "BuildOnly":
+                        BuildOnly();
+                        break;
                     case "Setting":
                     {
                         var settings = MmdWorldSettings.LoadOrCreate();
@@ -314,6 +329,40 @@ namespace MmdWorld.EditorTools
                 lines.Add($"{c.GetType().FullName} {Path(c.transform)}");
             lines.Add("見つからないスクリプト: " + prefab.GetComponentsInChildren<Transform>(true).Sum(t => GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(t.gameObject)));
             return string.Join("\n", lines);
+        }
+
+        /// <summary>今の対象でワールドをビルドだけする（アップロードしない）。結果と大きさを Temp/MmdBuild.txt に書く。</summary>
+        static async void BuildOnly()
+        {
+            File.WriteAllText("Temp/MmdBuild.txt", "ビルド中: " + EditorUserBuildSettings.activeBuildTarget);
+            try
+            {
+                EditorSceneManager.OpenScene(WorldBuilder.ScenePath);
+                EditorApplication.ExecuteMenuItem("VRChat SDK/Show Control Panel");
+                VRCSdkControlPanel.TryGetBuilder<IVRCSdkWorldBuilderApi>(out var builder);
+                string path = null;
+                for (int attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        if (builder == null) throw new Exception("Open the SDK panel");
+                        path = await builder.Build();
+                        break;
+                    }
+                    catch (Exception e) when (attempt < 15 && e.Message.Contains("Open the SDK panel"))
+                    {
+                        await System.Threading.Tasks.Task.Delay(2000);
+                        VRCSdkControlPanel.TryGetBuilder<IVRCSdkWorldBuilderApi>(out builder);
+                    }
+                }
+                long size = File.Exists(path) ? new FileInfo(path).Length : -1;
+                File.WriteAllText("Temp/MmdBuild.txt", $"成功: {EditorUserBuildSettings.activeBuildTarget} {size / 1024f / 1024f:F2} MB {path}");
+            }
+            catch (Exception e)
+            {
+                File.WriteAllText("Temp/MmdBuild.txt", $"失敗: {EditorUserBuildSettings.activeBuildTarget} {e.GetType().Name}: {e.Message}");
+                Debug.LogException(e);
+            }
         }
 
         static void SetTabletTouchLog(bool on)

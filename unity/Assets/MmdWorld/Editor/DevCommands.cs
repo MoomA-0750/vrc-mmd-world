@@ -37,6 +37,7 @@ namespace MmdWorld.EditorTools
     ///   BuildOnly         今の対象（Windows か Android）でワールドをビルドだけして（アップロードしない）、結果と大きさを Temp/MmdBuild.txt に書く
     ///   UploadPrivate [名前]  今の対象（Windows か Android）で、ワールドを非公開（private）でアップロードする。最初の1回で新しいワールドを作り、
     ///                     ワールド ID は Assets/LocalOnly/WorldId.txt に覚える（シーンには残さない。リポジトリに入らない）。結果は Temp/MmdUpload.txt
+    ///   WhoAmI            VRChat SDK にサインインしているアカウントの表示名を Temp/MmdWhoAmI.txt に書く
     ///   Setting 名前 値   MmdWorldSettings の bool・int・float・string の欄を変えて保存する（試しの切り替え用）
     ///   ShowDetect [フォルダ]  マネージャーを開き、探すフォルダを変えて「フォルダから曲を探す」を押したところにする（登録はしない）
     ///   Refresh           AssetDatabase.Refresh
@@ -155,6 +156,9 @@ namespace MmdWorld.EditorTools
                         break;
                     case "UploadPrivate":
                         UploadPrivate(words.Length > 1 ? string.Join(" ", words.Skip(1)) : "MMD World (test)");
+                        break;
+                    case "WhoAmI":
+                        File.WriteAllText("Temp/MmdWhoAmI.txt", VRC.Core.APIUser.CurrentUser != null ? VRC.Core.APIUser.CurrentUser.displayName : "（サインインしていない）");
                         break;
                     case "Setting":
                     {

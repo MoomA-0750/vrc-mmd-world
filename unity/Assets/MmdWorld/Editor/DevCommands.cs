@@ -35,6 +35,8 @@ namespace MmdWorld.EditorTools
     ///   AddPreview prefab  お手本に足す（取り込んだアバターを、組み立て直して確かめるとき）
     ///   SwitchPlatform android|windows  ビルドの対象を切り替える（アセットの取り込み直しで時間がかかる）
     ///   BuildOnly         今の対象（Windows か Android）でワールドをビルドだけして（アップロードしない）、結果と大きさを Temp/MmdBuild.txt に書く
+    ///   UploadPrivate [名前]  今の対象（Windows か Android）で、ワールドを非公開（private）でアップロードする。最初の1回で新しいワールドを作り、
+    ///                     ワールド ID は Assets/LocalOnly/WorldId.txt に覚える（シーンには残さない。リポジトリに入らない）。結果は Temp/MmdUpload.txt
     ///   Setting 名前 値   MmdWorldSettings の bool・int・float・string の欄を変えて保存する（試しの切り替え用）
     ///   ShowDetect [フォルダ]  マネージャーを開き、探すフォルダを変えて「フォルダから曲を探す」を押したところにする（登録はしない）
     ///   Refresh           AssetDatabase.Refresh
@@ -150,6 +152,9 @@ namespace MmdWorld.EditorTools
                     }
                     case "BuildOnly":
                         BuildOnly();
+                        break;
+                    case "UploadPrivate":
+                        UploadPrivate(words.Length > 1 ? string.Join(" ", words.Skip(1)) : "MMD World (test)");
                         break;
                     case "Setting":
                     {
@@ -362,6 +367,113 @@ namespace MmdWorld.EditorTools
             {
                 File.WriteAllText("Temp/MmdBuild.txt", $"失敗: {EditorUserBuildSettings.activeBuildTarget} {e.GetType().Name}: {e.Message}");
                 Debug.LogException(e);
+            }
+        }
+
+        const string WorldIdFile = "Assets/LocalOnly/WorldId.txt";
+
+        /// <summary>
+        /// 今の対象でワールドを非公開でアップロードする。WorldIdFile にワールド ID があればそのワールドを更新し、無ければ新しく作って ID を覚える。
+        /// ワールド ID は、アップロードの間だけシーンの PipelineManager に入れ、終わったら消す（シーンはリポジトリに入るので）。
+        /// </summary>
+        static async void UploadPrivate(string name)
+        {
+            File.WriteAllText("Temp/MmdUpload.txt", "アップロード中: " + EditorUserBuildSettings.activeBuildTarget);
+            var scene = EditorSceneManager.OpenScene(WorldBuilder.ScenePath);
+            var pipeline = UnityEngine.Object.FindObjectsOfType<VRC.Core.PipelineManager>(true).FirstOrDefault();
+            try
+            {
+                if (pipeline == null) throw new Exception("シーンに PipelineManager が無い");
+                string id = File.Exists(WorldIdFile) ? File.ReadAllText(WorldIdFile).Trim() : "";
+                pipeline.blueprintId = id;
+                EditorUtility.SetDirty(pipeline);
+                EditorSceneManager.SaveScene(scene);
+
+                VRC.SDKBase.Editor.Api.VRCWorld world;
+                string thumbnail = null;
+                if (!string.IsNullOrEmpty(id))
+                {
+                    world = await VRC.SDKBase.Editor.Api.VRCApi.GetWorld(id, true);
+                }
+                else
+                {
+                    world = new VRC.SDKBase.Editor.Api.VRCWorld
+                    {
+                        Name = name,
+                        Description = "MMD World の確かめ用（非公開）",
+                        Capacity = 16,
+                        RecommendedCapacity = 8,
+                        Tags = new System.Collections.Generic.List<string>(),
+                        ReleaseStatus = "private",
+                    };
+                    thumbnail = MakeThumbnail();
+                }
+
+                EditorApplication.ExecuteMenuItem("VRChat SDK/Show Control Panel");
+                VRCSdkControlPanel.TryGetBuilder<IVRCSdkWorldBuilderApi>(out var builder);
+                for (int attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        if (builder == null) throw new Exception("Open the SDK panel");
+                        await builder.BuildAndUpload(world, thumbnail);
+                        break;
+                    }
+                    catch (Exception e) when (attempt < 15 && e.Message.Contains("Open the SDK panel"))
+                    {
+                        await System.Threading.Tasks.Task.Delay(2000);
+                        VRCSdkControlPanel.TryGetBuilder<IVRCSdkWorldBuilderApi>(out builder);
+                    }
+                }
+                // 新しく作ったワールドの ID は、アップロードで PipelineManager に入る
+                pipeline = UnityEngine.Object.FindObjectsOfType<VRC.Core.PipelineManager>(true).FirstOrDefault();
+                if (pipeline != null && !string.IsNullOrEmpty(pipeline.blueprintId)) File.WriteAllText(WorldIdFile, pipeline.blueprintId);
+                File.WriteAllText("Temp/MmdUpload.txt", $"成功: {EditorUserBuildSettings.activeBuildTarget} {(pipeline != null ? pipeline.blueprintId : "")}");
+            }
+            catch (Exception e)
+            {
+                File.WriteAllText("Temp/MmdUpload.txt", $"失敗: {EditorUserBuildSettings.activeBuildTarget} {e.GetType().Name}: {e.Message}");
+                Debug.LogException(e);
+            }
+            finally
+            {
+                pipeline = UnityEngine.Object.FindObjectsOfType<VRC.Core.PipelineManager>(true).FirstOrDefault();
+                if (pipeline != null)
+                {
+                    pipeline.blueprintId = "";
+                    EditorUtility.SetDirty(pipeline);
+                    EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
+                }
+            }
+        }
+
+        /// <summary>客席から舞台を撮ったサムネイル（1200×900）を Temp に書いて、そのパスを返す（新しいワールドを作るときに要る）。</summary>
+        static string MakeThumbnail()
+        {
+            var go = new GameObject("ThumbnailCamera");
+            try
+            {
+                var camera = go.AddComponent<Camera>();
+                go.transform.SetPositionAndRotation(new Vector3(0f, 2.2f, -1.5f), Quaternion.LookRotation(new Vector3(0f, 1.2f, 4.5f) - new Vector3(0f, 2.2f, -1.5f)));
+                camera.fieldOfView = 50f;
+                var rt = new RenderTexture(1200, 900, 24);
+                camera.targetTexture = rt;
+                camera.Render();
+                RenderTexture.active = rt;
+                var tex = new Texture2D(1200, 900, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, 1200, 900), 0, 0);
+                tex.Apply();
+                RenderTexture.active = null;
+                camera.targetTexture = null;
+                string path = Path.GetFullPath("Temp/MmdThumbnail.png");
+                File.WriteAllBytes(path, tex.EncodeToPNG());
+                UnityEngine.Object.DestroyImmediate(tex);
+                rt.Release();
+                return path;
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(go);
             }
         }
 

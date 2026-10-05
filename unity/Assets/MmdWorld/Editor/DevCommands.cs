@@ -384,6 +384,16 @@ namespace MmdWorld.EditorTools
             try
             {
                 if (pipeline == null) throw new Exception("シーンに PipelineManager が無い");
+                EditorApplication.ExecuteMenuItem("VRChat SDK/Show Control Panel");
+                IVRCSdkWorldBuilderApi builder = null;
+                for (int attempt = 0; attempt < 15 && !VRCSdkControlPanel.TryGetBuilder(out builder); attempt++)
+                    await System.Threading.Tasks.Task.Delay(2000);
+                if (builder == null) throw new Exception("VRChat SDK の Builder を取れない（サインインしているか確認）");
+                // SDK のパネルは1秒ごとに PipelineManager の ID を確かめ、まだサーバーに無い（持ち主と確かめられない）ID を消す。
+                // ビルド中・アップロード中は消さないが、BuildAndUpload は新しい ID を割り当てて権利の確認を送ったあとでアップロード中になるので、その間に消されて失敗した。
+                // 先にアップロード中にしておく（BuildAndUpload が終わると SDK が元に戻す）
+                var uploadState = builder.GetType().GetField("_uploadState", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (uploadState != null) uploadState.SetValue(builder, Enum.Parse(uploadState.FieldType, "Uploading"));
                 string id = File.Exists(WorldIdFile) ? File.ReadAllText(WorldIdFile).Trim() : "";
                 pipeline.blueprintId = id;
                 // 新しいワールドは、SDK のパネルから押したときと同じように先に ID を割り当てて保存しておく
@@ -420,22 +430,7 @@ namespace MmdWorld.EditorTools
                     thumbnail = MakeThumbnail();
                 }
 
-                EditorApplication.ExecuteMenuItem("VRChat SDK/Show Control Panel");
-                VRCSdkControlPanel.TryGetBuilder<IVRCSdkWorldBuilderApi>(out var builder);
-                for (int attempt = 0; ; attempt++)
-                {
-                    try
-                    {
-                        if (builder == null) throw new Exception("Open the SDK panel");
-                        await builder.BuildAndUpload(world, thumbnailPath: thumbnail);
-                        break;
-                    }
-                    catch (Exception e) when (attempt < 15 && e.Message.Contains("Open the SDK panel"))
-                    {
-                        await System.Threading.Tasks.Task.Delay(2000);
-                        VRCSdkControlPanel.TryGetBuilder<IVRCSdkWorldBuilderApi>(out builder);
-                    }
-                }
+                await builder.BuildAndUpload(world, thumbnailPath: thumbnail);
                 // 新しく作ったワールドの ID は、アップロードで PipelineManager に入る
                 pipeline = UnityEngine.Object.FindObjectsOfType<VRC.Core.PipelineManager>(true).FirstOrDefault();
                 if (pipeline != null && !string.IsNullOrEmpty(pipeline.blueprintId)) File.WriteAllText(WorldIdFile, pipeline.blueprintId);

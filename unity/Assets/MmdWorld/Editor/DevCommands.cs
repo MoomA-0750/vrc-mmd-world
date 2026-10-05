@@ -389,7 +389,8 @@ namespace MmdWorld.EditorTools
                 // 新しいワールドは、SDK のパネルから押したときと同じように先に ID を割り当てて保存しておく
                 // （アップロードの途中で SDK がシーンを読み込み直すので、保存していないと権利の確認を送るときに ID が空になって失敗した）
                 bool creating = string.IsNullOrEmpty(id);
-                if (creating) pipeline.AssignId(VRC.Core.PipelineManager.ContentType.world);
+                // PipelineManager.AssignId では ID が入らなかったので、同じ形（wrld_ + GUID）で作る
+                if (creating) pipeline.blueprintId = "wrld_" + Guid.NewGuid();
                 // 権利の確認（Copyright ownership agreement）は本人の同意をもらってから送る（2026-10-05、本人「OKで進んでください」）。
                 // SDK のダイアログで OK を押したときと同じ処理（内部の Agree）を呼ぶ。同じセッションで同意済みならダイアログは出ない
                 var agree = typeof(VRC.SDKBase.VRCCopyrightAgreement).GetMethod("Agree", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);

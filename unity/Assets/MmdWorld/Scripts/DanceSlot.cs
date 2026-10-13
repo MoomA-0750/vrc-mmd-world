@@ -30,7 +30,7 @@ namespace MmdWorld
         [UdonSynced] int _avatarIndex = -1;
         /// <summary>踊っている人がスティック・WASD で動かした分（ステーションの親のローカル座標、XZ、メートル）。踊っている人（この枠の持ち主）が書く</summary>
         [UdonSynced] Vector3 _drive;
-        /// <summary>踊っている人が「その場で踊る」を選んでいるか。オンならステーションを軌跡どおりに動かさない（視点は動かないが、体は移動せず足踏みになる）</summary>
+        /// <summary>踊っている人が「その場で踊る」を選んでいるか。オンなら振り付けの移動を抜いた踊りで、枠の位置から動かずに踊る（ステーションはどちらでも動かさないので、視点は止まったまま）</summary>
         [UdonSynced] bool _inPlace;
         /// <summary>表示に使う値。持ち主はそのまま、ほかの人は同期された値を滑らかに追う</summary>
         Vector3 _shownDrive;
@@ -144,7 +144,7 @@ namespace MmdWorld
         }
 
         /// <summary>
-        /// この枠で踊らせるワールドのアバターを index にする（-1 で外す）。タブレットの「選ぶ」から呼ぶ。
+        /// この枠で踊らせるワールドのアバターを index にする（-1 で外す）。パネル・タブレットの左の「モデル」の一覧でアバターを選んでから枠を押したとき（外すときは置かれた枠を押したとき）に呼ぶ。
         /// 人が入っている枠と、ほかの枠で踊っているアバターには何もしない。
         /// </summary>
         public void SetAvatar(int index)
@@ -158,7 +158,7 @@ namespace MmdWorld
             system.RefreshSlotAvatars();
         }
 
-        /// <summary>選ぶページに出す、この枠の今の状態（人の名前・ワールドのアバターの名前・空き）。</summary>
+        /// <summary>パネル・タブレットの枠の列に出す、この枠の今の状態（人の名前・ワールドのアバターの名前・空き）。</summary>
         public string Describe()
         {
             if (IsTaken()) return VRCPlayerApi.GetPlayerById(_dancerId).displayName;

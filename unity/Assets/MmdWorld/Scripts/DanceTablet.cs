@@ -65,8 +65,14 @@ namespace MmdWorld
         public float hideOnMove = 0.5f;
         [Tooltip("デスクトップ: 頭からどこに置くか（視点についてくる）")]
         public Vector3 desktopOffset = new Vector3(0f, -0.1f, 1.0f);
-        [Tooltip("右手のコントローラーから指先までのずれ（コントローラーの向きのローカル座標、メートル）")]
+        [Tooltip("コントローラーから指先までのずれ（コントローラーの向きのローカル座標、メートル）。測れるまでと、測れないアバターで使う")]
         public Vector3 fingerOffset = new Vector3(0f, -0.02f, 0.07f);
+        [Tooltip("VR で立っている間、アバターの人差し指の先とコントローラーの位置関係を測って、指先のずれにする（コントローラーの機種ごとの違いを吸収する）")]
+        public bool measureFingerOffset = true;
+        [Tooltip("人差し指の先の関節から、指先までの長さ（メートル）")]
+        public float fingerTipExtra = 0.015f;
+        [Tooltip("測った値に毎フレーム寄せる割合（揺れをならす）")]
+        public float fingerMeasureBlend = 0.05f;
 
         [Header("押し方")]
         [Tooltip("ボタンの面をこれだけ越えたら押したことにする（メートル）")]
@@ -115,6 +121,11 @@ namespace MmdWorld
         int _gripsRight;
         /// <summary>スマホなど、タッチで操作しているか（VRChat の入力の方法が Touch）</summary>
         bool _touch;
+        /// <summary>左右の手の、コントローラーから指先までのずれ（立っている間に測る）。測れていなければ fingerOffset</summary>
+        Vector3 _fingerLeft;
+        Vector3 _fingerRight;
+        bool _measuredLeft;
+        bool _measuredRight;
 
         void Start()
         {
@@ -125,6 +136,8 @@ namespace MmdWorld
             _shown = new int[buttons.Length];
             transform.localScale = Vector3.one * (_vr ? vrScale : 1f);
             _touch = !_vr && InputManager.GetLastUsedInputMethod() == VRCInputMethod.Touch;
+            _fingerLeft = fingerOffset;
+            _fingerRight = fingerOffset;
             SetVisible(false);
             ApplyInputMethod();
         }
@@ -312,6 +325,7 @@ namespace MmdWorld
                 return;
             }
             PollGrips();
+            MeasureFingers();
             if (!_visible) return;
 
             // 手に持っているなら、出したときの手との位置関係のまま、持つ手の位置と向きに付いていく。押すのはもう一方の手の指先
@@ -326,15 +340,51 @@ namespace MmdWorld
             }
 
             var finger = _local.GetTrackingData(PressingRight() ? VRCPlayerApi.TrackingDataType.RightHand : VRCPlayerApi.TrackingDataType.LeftHand);
-            var tip = finger.position + finger.rotation * fingerOffset;
+            var tip = finger.position + finger.rotation * (PressingRight() ? _fingerRight : _fingerLeft);
             if (pointer != null) pointer.position = tip;
             var local = transform.InverseTransformPoint(tip);
             if (logTouch && Time.time >= _nextTouchLog)
             {
                 _nextTouchLog = Time.time + 1f;
-                Debug.Log("[MmdWorld] タブレット: 指先 " + local.ToString("F3") + (_fixed ? "（ワールドに置いた）" : "（手に持っている）") + " 手 " + finger.position.ToString("F3") + " 板 " + transform.position.ToString("F3"));
+                Debug.Log("[MmdWorld] タブレット: 指先 " + local.ToString("F3") + (_fixed ? "（ワールドに置いた）" : "（手に持っている）") + " 手 " + finger.position.ToString("F3") + " 板 " + transform.position.ToString("F3")
+                          + " 指先のずれ 左 " + _fingerLeft.ToString("F3") + (_measuredLeft ? "" : "（未測定）") + " 右 " + _fingerRight.ToString("F3") + (_measuredRight ? "" : "（未測定）"));
             }
             TouchButtons(local);
+        }
+
+        /// <summary>
+        /// 立っている間（ステーションに座っていない間）は、アバターの手がコントローラーに付いてくるので、アバターの人差し指の先の、コントローラーから見た位置を測る。
+        /// コントローラーの機種によって、コントローラーの位置と手の位置の関係が違う（VRChat が機種ごとに手の位置を合わせている）ので、決め打ちのずれでは合わない。
+        /// 踊っている間はアバターの手が踊りで動くので測らず、最後に測った値を使う。指の骨が無いアバター・あり得ない値のときは fingerOffset のまま。
+        /// </summary>
+        void MeasureFingers()
+        {
+            if (!measureFingerOffset || (system != null && system.GetLocalStationRoot() != null)) return;
+            MeasureFinger(true);
+            MeasureFinger(false);
+        }
+
+        void MeasureFinger(bool right)
+        {
+            var distal = _local.GetBonePosition(right ? HumanBodyBones.RightIndexDistal : HumanBodyBones.LeftIndexDistal);
+            var middle = _local.GetBonePosition(right ? HumanBodyBones.RightIndexIntermediate : HumanBodyBones.LeftIndexIntermediate);
+            if (distal == Vector3.zero || middle == Vector3.zero) return;
+            var along = distal - middle;
+            var tip = distal + (along.sqrMagnitude > 1e-6f ? along.normalized * fingerTipExtra : Vector3.zero);
+            var hand = _local.GetTrackingData(right ? VRCPlayerApi.TrackingDataType.RightHand : VRCPlayerApi.TrackingDataType.LeftHand);
+            var measured = Quaternion.Inverse(hand.rotation) * (tip - hand.position);
+            // 指先がコントローラーから 3〜25cm になければ、アバターの手が付いてきていない（読み込み中・別の操作中など）とみなす
+            if (measured.magnitude < 0.03f || measured.magnitude > 0.25f) return;
+            if (right)
+            {
+                _fingerRight = _measuredRight ? Vector3.Lerp(_fingerRight, measured, fingerMeasureBlend) : measured;
+                _measuredRight = true;
+            }
+            else
+            {
+                _fingerLeft = _measuredLeft ? Vector3.Lerp(_fingerLeft, measured, fingerMeasureBlend) : measured;
+                _measuredLeft = true;
+            }
         }
 
         /// <summary>指先（タブレットのローカル座標）がボタンの面を押し込んだら押す。離れるまでは続けて押さない。</summary>

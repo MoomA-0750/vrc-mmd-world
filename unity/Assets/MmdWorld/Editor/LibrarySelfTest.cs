@@ -174,7 +174,7 @@ namespace MmdWorld.EditorTools
                 var frameworkAssets = MmdWorldExport.ExportFramework(framework);
                 Check(File.Exists(framework) && frameworkAssets.Contains("Assets/MmdWorld/Scripts/DanceSystem.cs") && frameworkAssets.Contains("Assets/MmdWorld/Vmd/Editor/VmdImporter.cs")
                       && frameworkAssets.Contains("Assets/MmdWorld/Editor/WorldBuilder.cs")
-                      && !frameworkAssets.Any(p => p.StartsWith(MmdWorldLibrary.SongsDir) || p.Contains("LocalOnly") || p.Contains("/Generated/") || p.EndsWith(".unity") || p == MmdWorldSettings.AssetPath),
+                      && !frameworkAssets.Any(p => p.StartsWith(MmdWorldLibrary.SongsDir) || p.Contains("/LocalOnly/") || p.Contains("/Generated/") || p.EndsWith(".unity") || p == MmdWorldSettings.AssetPath),
                       $"土台の書き出しに、スクリプト・道具・VMD の取り込みが入り、曲・アバター・シーン・設定は入らない（{frameworkAssets.Count} ファイル）");
                 File.Delete(framework);
                 song.audioOffset = 0f;

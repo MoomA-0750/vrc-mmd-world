@@ -1,28 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1107 &-6987860162194595427
-AnimatorStateMachine:
-  serializedVersion: 6
-  m_ObjectHideFlags: 1
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: Base Layer
-  m_ChildStates:
-  - serializedVersion: 1
-    m_State: {fileID: -5815554771031307323}
-    m_Position: {x: 200, y: 0, z: 0}
-  m_ChildStateMachines: []
-  m_AnyStateTransitions: []
-  m_EntryTransitions: []
-  m_StateMachineTransitions: {}
-  m_StateMachineBehaviours: []
-  m_AnyStatePosition: {x: 50, y: 20, z: 0}
-  m_EntryPosition: {x: 50, y: 120, z: 0}
-  m_ExitPosition: {x: 800, y: 120, z: 0}
-  m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}
-  m_DefaultState: {fileID: -5815554771031307323}
---- !u!1102 &-5815554771031307323
+--- !u!1102 &-5020346661375357335
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
@@ -34,7 +12,7 @@ AnimatorState:
   m_CycleOffset: 0.85973656
   m_Transitions: []
   m_StateMachineBehaviours:
-  - {fileID: 4590025213848351866}
+  - {fileID: 4080599842172670181}
   m_Position: {x: 50, y: 50, z: 0}
   m_IKOnFeet: 1
   m_WriteDefaultValues: 0
@@ -61,7 +39,7 @@ AnimatorController:
   m_AnimatorLayers:
   - serializedVersion: 5
     m_Name: Base Layer
-    m_StateMachine: {fileID: -6987860162194595427}
+    m_StateMachine: {fileID: 6274439250735951011}
     m_Mask: {fileID: 0}
     m_Motions: []
     m_Behaviours: []
@@ -71,7 +49,7 @@ AnimatorController:
     m_IKPass: 0
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
---- !u!114 &4590025213848351866
+--- !u!114 &4080599842172670181
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
@@ -94,3 +72,25 @@ MonoBehaviour:
   trackingEyes: 2
   trackingMouth: 2
   debugString: 
+--- !u!1107 &6274439250735951011
+AnimatorStateMachine:
+  serializedVersion: 6
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Base Layer
+  m_ChildStates:
+  - serializedVersion: 1
+    m_State: {fileID: -5020346661375357335}
+    m_Position: {x: 200, y: 0, z: 0}
+  m_ChildStateMachines: []
+  m_AnyStateTransitions: []
+  m_EntryTransitions: []
+  m_StateMachineTransitions: {}
+  m_StateMachineBehaviours: []
+  m_AnyStatePosition: {x: 50, y: 20, z: 0}
+  m_EntryPosition: {x: 50, y: 120, z: 0}
+  m_ExitPosition: {x: 800, y: 120, z: 0}
+  m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}
+  m_DefaultState: {fileID: -5020346661375357335}

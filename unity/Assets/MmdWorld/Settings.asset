@@ -17,6 +17,10 @@ MonoBehaviour:
   previewDancers: []
   slotAvatars: []
   vrHeadFollowsDance: 1
+  faceOverFx: 1
+  driveWhileDancing: 1
+  driveSpeed: 1.5
+  driveRadius: 4
   autoAddSongs: 0
   autoAddFolder: Assets/MmdWorld/Songs
   ignoredMotions: []

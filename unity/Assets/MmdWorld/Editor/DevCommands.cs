@@ -21,6 +21,7 @@ namespace MmdWorld.EditorTools
     ///                     features を付けると、再生とシークの代わりに、プレビュー・範囲再生・ループ・途中からの参加を試す。
     ///                     tablet を付けると、手元のタブレットを出してそのボタンから操作する
     ///                     drive を付けると、踊りながらスティックを倒したことにして、枠ごと動くかを見る
+    ///                     permissions を付けると、マスターが初期の権限を見るだけにし、見る側が10秒ごとに再生を試す（40 秒後にマスターが見る側を管理にする）
     ///                     preview を付けると、見る側はお手本の正面から見る
     ///                     mobile を付けると、このビルドの間だけステーションを PlayerMobility.Mobile にする（踊りながら歩けるかの検証）
     ///                     同上。クライアントを2つ起動し、先に入った方が12秒後に枠1に入って再生する（そのビルドだけ）。後の方は枠1の正面から見る。
@@ -85,7 +86,7 @@ namespace MmdWorld.EditorTools
                     case "BuildAndTestAuto":
                         // BuildAndTestAuto [着替えるアバターID] [戻すアバターID]
                         BuildAndTest(true, words.Length > 1 ? words[1] : "", words.Length > 2 ? words[2] : "",
-                            words.Length > 3 ? (words[3] == "features" ? 1 : words[3] == "tablet" ? 2 : words[3] == "drive" ? 3 : 0) : 0,
+                            words.Length > 3 ? (words[3] == "features" ? 1 : words[3] == "tablet" ? 2 : words[3] == "drive" ? 3 : words[3] == "permissions" ? 4 : 0) : 0,
                             words.Contains("mobile"), viewPreview: words.Contains("preview"));
                         break;
                     case "BuildAndTestVR":

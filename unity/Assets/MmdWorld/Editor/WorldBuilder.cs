@@ -67,6 +67,7 @@ namespace MmdWorld.EditorTools
             EnsureProgramAsset<DanceTablet>();
             EnsureProgramAsset<DanceSeekBar>();
             EnsureProgramAsset<DanceStation>();
+            EnsureProgramAsset<DancePermissions>();
             // batchmode では U# のコンパイルが走らないことがあり、新しいスクリプトのプログラムが未コンパイルのままだと
             // コンポーネントに値を入れられない（outdated behaviour version）。組み立ての前に必ず1回コンパイルする
             UdonSharpCompilerV1.CompileSync();
@@ -219,6 +220,12 @@ namespace MmdWorld.EditorTools
             var restore = BuildRestoreController();
             system.restoreControllers = restore != null ? new RuntimeAnimatorController[] { restore } : new RuntimeAnimatorController[0];
             system.seekBars = new[] { panelUi.seekBar, tabletUi.seekBar };
+            // 操作の権限（マスターは管理、ほかの人は初期は操作。左の一覧の見出しを押すと「人と権限」になる）
+            var permissionsGo = new GameObject("DancePermissions");
+            var permissions = UdonSharpUndo.AddComponent<DancePermissions>(permissionsGo);
+            permissions.system = system;
+            UdonSharpEditorUtility.CopyProxyToUdon(permissions);
+            system.permissions = permissions;
             UdonSharpEditorUtility.CopyProxyToUdon(system);
 
             PruneNetworkIds();
@@ -710,9 +717,12 @@ namespace MmdWorld.EditorTools
             hint.color = new Color(0.8f, 0.8f, 0.85f);
 
             // 左右の一覧（7 行とページ送り）
-            List<Text> BuildList(float x, string evt, string prev, string next, KeyCode[] rowKeys, KeyCode prevKey, KeyCode nextKey, out Text header)
+            // 見出しを押して切り替える一覧（左のモデル ⇄ 人と権限）は、見出しをボタンにする
+            List<Text> BuildList(float x, string evt, string prev, string next, KeyCode[] rowKeys, KeyCode prevKey, KeyCode nextKey, out Text header, string headerEvt = null, KeyCode headerKey = KeyCode.None)
             {
-                header = UiText(canvas, evt + "Header", "", 12, new Vector2(x, 150f), new Vector2(listW - 10f, 24f));
+                header = headerEvt != null
+                    ? AddButton("", headerEvt, headerKey, x, 150f, listW - 14f, 24f, false, -1, 10)
+                    : UiText(canvas, evt + "Header", "", 12, new Vector2(x, 150f), new Vector2(listW - 10f, 24f));
                 var rows = new List<Text>();
                 for (int i = 0; i < rowKeys.Length; i++)
                     rows.Add(AddButton("", evt, rowKeys[i], x, 115f - 38f * i, listW - 14f, 32f, false, i, 10));
@@ -721,7 +731,8 @@ namespace MmdWorld.EditorTools
                 return rows;
             }
             ui.modelRows = BuildList(-listX, "ModelRowButton", "ModelPagePrev", "ModelPageNext",
-                new[] { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.V, KeyCode.B, KeyCode.N, KeyCode.M }, KeyCode.Comma, KeyCode.Period, out ui.modelHeader);
+                new[] { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.V, KeyCode.B, KeyCode.N, KeyCode.M }, KeyCode.Comma, KeyCode.Period, out ui.modelHeader,
+                nameof(DanceSystem.ToggleLeftList), KeyCode.P);
             ui.songRows = BuildList(listX, "SongRowButton", "SongPagePrev", "SongPageNext",
                 new[] { KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.Y, KeyCode.U, KeyCode.I, KeyCode.O }, KeyCode.LeftBracket, KeyCode.RightBracket, out ui.songHeader);
 

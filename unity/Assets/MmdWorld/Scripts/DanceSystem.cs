@@ -40,6 +40,8 @@ namespace MmdWorld
         public Text tabletTitleText;
         public Text tabletStatusText;
         public DanceTablet tablet;
+        [Tooltip("操作の権限（無ければ誰でも操作できる）")]
+        public DancePermissions permissions;
         [Tooltip("再生位置・範囲・区切りを示すバー（パネルとタブレット）")]
         public DanceSeekBar[] seekBars;
         [Tooltip("降りる前に座り直す、トラッキングを元に戻すだけの Controller（VRC Animator Tracking Control で全身を Tracking にする）。無ければそのまま降りる。1つだけの変数だと VRChat で読み込めなかったので配列（先頭を使う）")]
@@ -130,7 +132,7 @@ namespace MmdWorld
         public VRCAvatarPedestal autoTestRestorePedestal;
         [Tooltip("自動確認で、見る側のクライアントが立つ場所（枠1の正面）")]
         public Transform autoTestViewPoint;
-        [Tooltip("自動確認の流れ。0: 再生とシーク　1: プレビュー・範囲再生・ループ・途中からの参加　2: 手元のタブレット")]
+        [Tooltip("自動確認の流れ。0: 再生とシーク　1: プレビュー・範囲再生・ループ・途中からの参加　2: 手元のタブレット　3: 踊りながら動く　4: 操作の権限")]
         public int autoTestScenario = 0;
 
         [Tooltip("座っている間、視点（頭のトラッキング）とアバターの頭の、ステーションから見た位置を 0.5 秒ごとにログに出す（仮想の VR で、視点が揺れるかを測る。DevCommands の BuildAndTestVR が入れる）")]
@@ -197,6 +199,9 @@ namespace MmdWorld
                     Networking.LocalPlayer.TeleportTo(autoTestViewPoint.position, autoTestViewPoint.rotation);
                 // 途中からの参加: ループの途中で枠2に入る
                 if (autoTestScenario == 1) SendCustomEventDelayedSeconds(nameof(_AutoTestViewerJoin), 63f);
+                // 操作の権限: 10 秒ごとに再生を試す（マスターが初期を「見るだけ」にしたあとは断られ、管理にしてもらったあとは通る）
+                if (autoTestScenario == 4)
+                    for (int i = 1; i <= 9; i++) SendCustomEventDelayedSeconds(nameof(_AutoTestTryPlay), 10f * i);
                 return;
             }
             if (autoTestPedestal != null)
@@ -247,8 +252,44 @@ namespace MmdWorld
             SendCustomEventDelayedSeconds(nameof(_AutoTestLogPosition), 2f);
         }
 
+        /// <summary>操作の権限の確かめ（見る側）: 再生を押してみて、通ったら 4 秒後に止める。</summary>
+        public void _AutoTestTryPlay()
+        {
+            bool allowed = permissions == null || permissions.LocalCanOperate();
+            Debug.Log("[MmdWorld] 自動確認: 再生を試す（権限 " + (permissions != null ? permissions.LevelName(permissions.LevelOf(Networking.LocalPlayer)) : "なし") + "）");
+            Play();
+            if (allowed) SendCustomEventDelayedSeconds(nameof(_AutoTestStop), 4f);
+        }
+
+        /// <summary>操作の権限の確かめ（マスター）: 初期を「見るだけ」にする。</summary>
+        public void _AutoTestDefaultViewer()
+        {
+            if (permissions == null) return;
+            if (permissions.defaultLevel >= DancePermissions.Operator) permissions.ToggleDefault();
+        }
+
+        /// <summary>操作の権限の確かめ（マスター）: ほかの人を、見るだけ → 管理 にする（CycleLevel は 操作 → 見るだけ → 管理 の順）。</summary>
+        public void _AutoTestPromoteOthers()
+        {
+            if (permissions == null) return;
+            UpdatePlayers();
+            for (int i = 0; i < _playerCount; i++)
+            {
+                var player = _players[i];
+                if (!Utilities.IsValid(player) || player.isLocal) continue;
+                for (int n = 0; n < 3 && permissions.LevelOf(player) != DancePermissions.Manager; n++) permissions.CycleLevel(player);
+            }
+        }
+
         public void _AutoTestDance()
         {
+            if (autoTestScenario == 4)
+            {
+                Debug.Log("[MmdWorld] 自動確認: 操作の権限（初期を見るだけにし、40 秒後にほかの人を管理にする）");
+                _AutoTestDefaultViewer();
+                SendCustomEventDelayedSeconds(nameof(_AutoTestPromoteOthers), 40f);
+                return;
+            }
             if (autoTestScenario != 2 && slots.Length > 0 && slots[0] != null) slots[0].ClaimForLocal();
             if (autoTestScenario == 2)
             {
@@ -392,6 +433,7 @@ namespace MmdWorld
 
         public void NextSong()
         {
+            if (!CanOperate()) return;
             if (_playing || SongCount() == 0) return;
             TakeOwnership();
             _songIndex = (_songIndex + 1) % SongCount();
@@ -401,6 +443,7 @@ namespace MmdWorld
 
         public void PrevSong()
         {
+            if (!CanOperate()) return;
             if (_playing || SongCount() == 0) return;
             TakeOwnership();
             _songIndex = (_songIndex + SongCount() - 1) % SongCount();
@@ -411,7 +454,7 @@ namespace MmdWorld
         /// <summary>範囲の開始の区切りから、カウントダウンのあとに流す。</summary>
         public void Play()
         {
-            if (SongCount() == 0) return;
+            if (SongCount() == 0 || !CanOperate()) return;
             _localPreview = false;
             TakeOwnership();
             _playing = true;
@@ -423,6 +466,7 @@ namespace MmdWorld
 
         public void Stop()
         {
+            if (!CanOperate()) return;
             TakeOwnership();
             _playing = false;
             Commit();
@@ -431,13 +475,14 @@ namespace MmdWorld
         /// <summary>1つ先の区切りへ（再生中だけ）。</summary>
         public void SeekForward()
         {
+            if (!CanOperate()) return;
             SeekBy(1);
         }
 
         /// <summary>1つ前の区切りへ。いまの区切りに入ってすぐ（2秒以内）でなければ、いまの区切りの頭へ戻る（プレーヤーの「前へ」と同じ）。</summary>
         public void SeekBack()
         {
-            if (!_playing) return;
+            if (!_playing || !CanOperate()) return;
             float t = CurrentTime();
             int k = SegmentAt(_songIndex, t);
             SeekTo(t - SegmentTime(_songIndex, k) > 2f ? k : k - 1);
@@ -465,26 +510,31 @@ namespace MmdWorld
 
         public void RangeStartForward()
         {
+            if (!CanOperate()) return;
             SetRange(_rangeStart + 1, _rangeEnd);
         }
 
         public void RangeStartBack()
         {
+            if (!CanOperate()) return;
             SetRange(_rangeStart - 1, _rangeEnd);
         }
 
         public void RangeEndForward()
         {
+            if (!CanOperate()) return;
             SetRange(_rangeStart, _rangeEnd < 0 ? -1 : _rangeEnd + 1);
         }
 
         public void RangeEndBack()
         {
+            if (!CanOperate()) return;
             SetRange(_rangeStart, _rangeEnd < 0 ? LastSegment(_songIndex) : _rangeEnd - 1);
         }
 
         public void ToggleLoop()
         {
+            if (!CanOperate()) return;
             TakeOwnership();
             _loop = !_loop;
             Debug.Log("[MmdWorld] ループ: " + _loop);
@@ -570,6 +620,7 @@ namespace MmdWorld
             var slot = slots[index];
             if (_armedAvatar >= 0)
             {
+                if (!CanOperate()) { _armedAvatar = -1; RefreshLists(); return; }
                 if (!slot.HasDancer())
                 {
                     Debug.Log("[MmdWorld] パネル: 枠" + (index + 1) + " に " + SlotAvatarName(_armedAvatar) + " を置く");
@@ -585,6 +636,7 @@ namespace MmdWorld
             }
             else if (slot.GetAvatarIndex() >= 0)
             {
+                if (!CanOperate()) return;
                 Debug.Log("[MmdWorld] パネル: 枠" + (index + 1) + " のアバターを外す");
                 slot.SetAvatar(-1);
             }
@@ -604,7 +656,7 @@ namespace MmdWorld
         {
             int index = _songPage * PerPage(songRowTexts) + pressedArgument;
             Debug.Log("[MmdWorld] パネル: 曲 " + index);
-            if (_playing || pressedArgument < 0 || index >= SongCount() || index == _songIndex) return;
+            if (_playing || pressedArgument < 0 || index >= SongCount() || index == _songIndex || !CanOperate()) return;
             TakeOwnership();
             _songIndex = index;
             ResetRange();
@@ -617,6 +669,11 @@ namespace MmdWorld
         /// <summary>左のモデルの一覧の pressedArgument 行目を選ぶ（次に押した枠に置く）。同じものをもう一度押すと選ぶのをやめる。</summary>
         public void ModelRowButton()
         {
+            if (_peopleMode)
+            {
+                PeopleRowButton();
+                return;
+            }
             int index = _modelPage * PerPage(modelRowTexts) + pressedArgument;
             if (pressedArgument < 0 || index >= SlotAvatarCount()) return;
             _armedAvatar = _armedAvatar == index ? -1 : index;
@@ -624,8 +681,86 @@ namespace MmdWorld
             RefreshLists();
         }
 
-        public void ModelPageNext() { _modelPage = (_modelPage + 1) % Pages(SlotAvatarCount(), modelRowTexts); RefreshLists(); }
-        public void ModelPagePrev() { int n = Pages(SlotAvatarCount(), modelRowTexts); _modelPage = (_modelPage + n - 1) % n; RefreshLists(); }
+        public void ModelPageNext() { _modelPage = (_modelPage + 1) % Pages(LeftCount(), modelRowTexts); RefreshLists(); }
+        public void ModelPagePrev() { int n = Pages(LeftCount(), modelRowTexts); _modelPage = (_modelPage + n - 1) % n; RefreshLists(); }
+
+        // ---- 左の一覧の「人と権限」 ----
+
+        /// <summary>左の一覧に、モデルの代わりに人と権限を出しているか（自分の手元だけ）</summary>
+        bool _peopleMode;
+        VRCPlayerApi[] _players = new VRCPlayerApi[100];
+        int _playerCount;
+
+        /// <summary>左の一覧の見出しを押した: モデルと「人と権限」を切り替える。</summary>
+        public void ToggleLeftList()
+        {
+            _peopleMode = !_peopleMode && permissions != null;
+            _modelPage = 0;
+            _armedAvatar = -1;
+            RefreshLists();
+        }
+
+        /// <summary>左の一覧の行の数（人と権限なら、先頭の「初期」の行と人の数）。</summary>
+        int LeftCount()
+        {
+            if (!_peopleMode) return SlotAvatarCount();
+            UpdatePlayers();
+            return _playerCount + 1;
+        }
+
+        void UpdatePlayers()
+        {
+            _playerCount = Mathf.Min(VRCPlayerApi.GetPlayerCount(), _players.Length);
+            VRCPlayerApi.GetPlayers(_players);
+        }
+
+        /// <summary>「人と権限」の行を押した。先頭は初期の権限の切り替え、ほかはその人の権限を次へ送る（管理の人だけ）。</summary>
+        void PeopleRowButton()
+        {
+            int index = _modelPage * PerPage(modelRowTexts) + pressedArgument;
+            if (pressedArgument < 0 || permissions == null) return;
+            if (!permissions.LocalCanManage())
+            {
+                Denied("権限を変えられるのは管理の人だけです");
+                return;
+            }
+            UpdatePlayers();
+            if (index == 0) permissions.ToggleDefault();
+            else if (index - 1 < _playerCount && Utilities.IsValid(_players[index - 1])) permissions.CycleLevel(_players[index - 1]);
+            RefreshLists();
+        }
+
+        /// <summary>自分が操作（再生・停止など）できるか。できなければ、パネルとタブレットにそう出す。</summary>
+        bool CanOperate()
+        {
+            if (permissions == null || permissions.LocalCanOperate()) return true;
+            Denied("操作の権限がありません（見るだけ）");
+            return false;
+        }
+
+        void Denied(string message)
+        {
+            Debug.Log("[MmdWorld] 権限: " + message);
+            string title = titleText != null ? titleText.text : "";
+            if (titleText != null) titleText.text = title + "\n" + message;
+            if (tabletTitleText != null) tabletTitleText.text = title + "\n" + message;
+            SendCustomEventDelayedSeconds(nameof(_ClearDenied), 2.5f);
+        }
+
+        public void _ClearDenied()
+        {
+            ShowIdle();
+        }
+
+        public override void OnPlayerJoined(VRCPlayerApi player)
+        {
+            RefreshLists();
+        }
+
+        public override void OnPlayerLeft(VRCPlayerApi player)
+        {
+            RefreshLists();
+        }
 
         /// <summary>一覧と枠の列の文字を、今の曲・枠・アバターに合わせる。今のもの・選んでいるものは黄色、置けないものは灰色。</summary>
         public void RefreshLists()
@@ -666,7 +801,11 @@ namespace MmdWorld
                 }
                 SetTexts(songListHeaders, "曲 " + (_songPage + 1) + "/" + Pages(SongCount(), songRowTexts));
             }
-            if (modelRowTexts != null)
+            if (modelRowTexts != null && _peopleMode)
+            {
+                RefreshPeopleRows();
+            }
+            else if (modelRowTexts != null)
             {
                 for (int i = 0; i < modelRowTexts.Length; i++)
                 {
@@ -682,8 +821,39 @@ namespace MmdWorld
                     text.text = SlotAvatarName(index);
                     text.color = index == _armedAvatar ? listCurrentColor : (IsSlotAvatarUsed(index, null) ? listDisabledColor : listTextColor);
                 }
-                SetTexts(modelListHeaders, _armedAvatar >= 0 ? "置く枠を押す" : "モデル " + (_modelPage + 1) + "/" + Pages(SlotAvatarCount(), modelRowTexts));
+                SetTexts(modelListHeaders, _armedAvatar >= 0 ? "置く枠を押す" : "モデル " + (_modelPage + 1) + "/" + Pages(SlotAvatarCount(), modelRowTexts) + (permissions != null ? "（押すと人）" : ""));
             }
+        }
+
+        /// <summary>左の一覧に、先頭の「初期」の行と、人ごとの名前と権限を出す。自分は黄色、マスターは紫。</summary>
+        void RefreshPeopleRows()
+        {
+            UpdatePlayers();
+            int per = PerPage(modelRowTexts);
+            int pages = Pages(_playerCount + 1, modelRowTexts);
+            if (_modelPage >= pages) _modelPage = 0;
+            bool canManage = permissions.LocalCanManage();
+            for (int i = 0; i < modelRowTexts.Length; i++)
+            {
+                var text = modelRowTexts[i];
+                if (text == null) continue;
+                int index = _modelPage * per + i % per;
+                if (index == 0)
+                {
+                    text.text = "初期: " + permissions.LevelName(permissions.defaultLevel);
+                    text.color = canManage ? listTextColor : listDisabledColor;
+                    continue;
+                }
+                var player = index - 1 < _playerCount ? _players[index - 1] : null;
+                if (!Utilities.IsValid(player))
+                {
+                    text.text = "";
+                    continue;
+                }
+                text.text = player.displayName + "\n" + (player.isMaster ? "マスター（管理）" : permissions.LevelName(permissions.LevelOf(player)));
+                text.color = player.isLocal ? listCurrentColor : player.isMaster ? listAvatarColor : (canManage ? listTextColor : listDisabledColor);
+            }
+            SetTexts(modelListHeaders, "人と権限 " + (_modelPage + 1) + "/" + pages + "（押すとモデル）");
         }
 
         void SetTexts(Text[] texts, string value)

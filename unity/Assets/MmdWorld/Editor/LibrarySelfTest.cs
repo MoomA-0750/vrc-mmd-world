@@ -247,6 +247,9 @@ namespace MmdWorld.EditorTools
                 Check(system.uiCopies == 2 && system.slotTexts.Length == 8 && system.songRowTexts.Length == 14 && system.modelRowTexts.Length == 14
                       && UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSystem.SlotButton)) == 8,
                       "タブレットと舞台の横のパネルの両方に、枠の列（4つ）と左右の一覧（7行ずつ）がある");
+                Check(system.permissions != null && system.permissions.system == system
+                      && UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Count(b => b.eventName == nameof(DanceSystem.ToggleLeftList)) == 2,
+                      "操作の権限が置かれ、タブレットとパネルの左の一覧の見出しが「人と権限」への切り替えボタンになる");
                 var tablet = UnityEngine.Object.FindObjectsOfType<DanceTablet>(true).First();
                 // スマホ用の「メニュー」ボタンは除く
                 var panelButtons = UnityEngine.Object.FindObjectsOfType<DanceButton>(true).Where(b => !tablet.buttons.Contains(b) && b.target != tablet).ToList();

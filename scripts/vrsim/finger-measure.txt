@@ -1,0 +1,11 @@
+# 仮想の VR で、立っている間に指先のずれを測れているかを見る台本（scripts/vrsim.py play で流す）。
+# 立って手を前に出し、左手を2回握ってタブレットを出す。出している間は、ログの「指先のずれ 左 … 右 …」に測った値が出る
+stand
+pose head 0 1.5 0 0 0 0
+pose left -0.2 1.2 0.3 0 0 0
+pose right 0.2 1.2 0.3 0 0 0
+wait 5
+grip left 2
+wait 6
+grip left 2
+wait 1

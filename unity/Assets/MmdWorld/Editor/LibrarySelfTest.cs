@@ -170,6 +170,13 @@ namespace MmdWorld.EditorTools
                       && packed.Contains(AssetDatabase.GetAssetPath(song.audio)) && !packed.Any(p => p.EndsWith(".cs") || p.EndsWith(".dll")),
                       $"素材ごとの書き出しに、曲の設定・モーション・音声が入り、スクリプトは入らない（{packed.Count} ファイル）");
                 File.Delete(package);
+                string framework = Path.Combine(Path.GetTempPath(), "mmdworld-selftest-framework.unitypackage");
+                var frameworkAssets = MmdWorldExport.ExportFramework(framework);
+                Check(File.Exists(framework) && frameworkAssets.Contains("Assets/MmdWorld/Scripts/DanceSystem.cs") && frameworkAssets.Contains("Assets/MmdWorld/Vmd/Editor/VmdImporter.cs")
+                      && frameworkAssets.Contains("Assets/MmdWorld/Editor/WorldBuilder.cs")
+                      && !frameworkAssets.Any(p => p.StartsWith(MmdWorldLibrary.SongsDir) || p.Contains("LocalOnly") || p.Contains("/Generated/") || p.EndsWith(".unity") || p == MmdWorldSettings.AssetPath),
+                      $"土台の書き出しに、スクリプト・道具・VMD の取り込みが入り、曲・アバター・シーン・設定は入らない（{frameworkAssets.Count} ファイル）");
+                File.Delete(framework);
                 song.audioOffset = 0f;
                 song.partOffsets = new List<Vector3>();
                 EditorUtility.SetDirty(song);
@@ -234,6 +241,18 @@ namespace MmdWorld.EditorTools
                           && system.lagControllers.All(c => c != null) && system.catchUpVariants == WorldBuilder.CatchUpVariants
                           && Mathf.Abs(diff - 2 * WorldBuilder.CatchUpStep) < 0.01f && l2.motion == s1.motion,
                           $"遅れを取り戻す版の Controller が区切りごとに {lagPer} 個あり、0.25 秒ずつ先から始まる（2つ目の版は {diff:F3} 秒先）");
+                    // 表情を FX より優先する: 踊りの Controller で FX の重みを 0 にし、降りる前の Controller で 1 に戻す（アバターの SDK があるときだけ）
+                    var layerControl = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl")).FirstOrDefault(t => t != null);
+                    if (layerControl != null && settings.faceOverFx)
+                    {
+                        float FxWeight(RuntimeAnimatorController c)
+                        {
+                            var b = (c as UnityEditor.Animations.AnimatorController)?.layers[0].stateMachine.defaultState.behaviours.FirstOrDefault(x => x.GetType() == layerControl);
+                            return b != null ? (float)layerControl.GetField("goalWeight").GetValue(b) : -1f;
+                        }
+                        Check(FxWeight(system.segmentControllers[0]) == 0f && FxWeight(system.lagInPlaceControllers[0]) == 0f && FxWeight(system.restoreControllers[0]) == 1f,
+                              "踊りの Controller はアバターの FX の重みを 0 にし、降りる前の Controller で 1 に戻す");
+                    }
                     Check(system.lagControllers.Concat(system.lagInPlaceControllers).Cast<UnityEditor.Animations.AnimatorController>()
                           .All(c => c.layers[0].stateMachine.defaultState.cycleOffset < 1f), "遅れを取り戻す版は曲の終わりを越えない");
                 }

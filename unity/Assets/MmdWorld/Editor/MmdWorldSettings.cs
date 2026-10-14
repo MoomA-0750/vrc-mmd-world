@@ -27,6 +27,9 @@ namespace MmdWorld.EditorTools
         [Tooltip("VR で踊っているとき、頭も踊りに合わせるか（初期は入れる）。今は、入れると振り付けの頭の動きで視点も揺れる。切ると、頭（視点）はヘッドセットのまま、体だけ踊る")]
         public bool vrHeadFollowsDance = true;
 
+        [Tooltip("踊っている間、アバターの FX レイヤーを止めて、MMD の表情を出すか（初期は入れる）。FX が表情を上書きするアバターでも表情が動く。FX にある服の切り替えなども、踊っている間は止まる")]
+        public bool faceOverFx = true;
+
         [Tooltip("踊っている間も、スティック・WASD で自分の枠ごと動けるようにするか（初期は入れる）。動いた分は全員に同期され、VR の視点も一緒に動く")]
         public bool driveWhileDancing = true;
 

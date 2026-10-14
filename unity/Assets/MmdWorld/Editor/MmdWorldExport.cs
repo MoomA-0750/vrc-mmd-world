@@ -155,5 +155,34 @@ namespace MmdWorld.EditorTools
             AssetDatabase.ExportPackage(assets.ToArray(), path, ExportPackageOptions.Default);
             return assets;
         }
+
+        /// <summary>土台（仕組み）として書き出すフォルダ。ギミック（Udon）・エディタの道具・VMD の取り込み。</summary>
+        public static readonly string[] FrameworkFolders = { "Assets/MmdWorld/Scripts", "Assets/MmdWorld/Editor", "Assets/MmdWorld/Vmd/Editor" };
+
+        /// <summary>
+        /// 曲・アバター・組み立てでできるもの（シーン・Generated）・設定を抜いた、土台（仕組み）だけを .unitypackage にまとめる（決定 2026-10-14）。
+        /// ほかの人が自分のワールドのプロジェクト（VRChat SDK Worlds 入り）に Import し、マネージャーで曲を足して組み立てれば使える。
+        /// 規約で再配布できない曲・アバターを入れないため、Songs・LocalOnly・Settings.asset は入れない。
+        /// </summary>
+        public static List<string> ExportFramework(string path)
+        {
+            var assets = FrameworkFolders
+                .SelectMany(folder => AssetDatabase.FindAssets("", new[] { folder }).Select(AssetDatabase.GUIDToAssetPath).Append(folder))
+                .Where(p => !p.StartsWith(MmdWorldLibrary.SongsDir) && !p.Contains("/LocalOnly/") && p != MmdWorldSettings.AssetPath)
+                .Distinct()
+                .OrderBy(p => p)
+                .ToList();
+            AssetDatabase.ExportPackage(assets.ToArray(), path, ExportPackageOptions.Default);
+            return assets;
+        }
+
+        [MenuItem("MMD World/土台を書き出す（.unitypackage）", priority = 20)]
+        static void ExportFrameworkMenu()
+        {
+            string path = EditorUtility.SaveFilePanel("土台を書き出す", "", "MmdWorld-framework.unitypackage", "unitypackage");
+            if (string.IsNullOrEmpty(path)) return;
+            var assets = ExportFramework(path);
+            EditorUtility.DisplayDialog("土台を書き出しました", $"{assets.Count} ファイルを書き出しました（曲・アバター・シーン・設定は入れていません）。\n{path}", "OK");
+        }
     }
 }

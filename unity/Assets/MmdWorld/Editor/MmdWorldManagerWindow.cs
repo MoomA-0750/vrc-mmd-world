@@ -588,6 +588,7 @@ namespace MmdWorld.EditorTools
             int slots = EditorGUILayout.IntSlider("踊る人の枠", settings.slotCount, 1, 16);
             float countdown = EditorGUILayout.Slider("カウントダウン（秒）", settings.countdownSeconds, 0f, 10f);
             bool headFollows = EditorGUILayout.Toggle(new GUIContent("VR で頭も踊りに合わせる", "入れると頭も振り付けどおりに動く（今は視点も一緒に揺れる）。切ると、頭（視点）はヘッドセットのまま、体だけ踊る"), settings.vrHeadFollowsDance);
+            bool faceOverFx = EditorGUILayout.Toggle(new GUIContent("表情を FX より優先する", "踊っている間、アバターの FX レイヤーを止めて、MMD の表情を出す（FX が表情を上書きするアバターでも表情が動く）。FX にある服の切り替えなども、踊っている間は止まる"), settings.faceOverFx);
             bool drive = EditorGUILayout.Toggle(new GUIContent("踊りながら動ける", "踊っている間も、スティック・WASD で自分の枠ごと動ける。動いた分は全員に同期され、VR の視点も一緒に動く。止めると枠に戻る"), settings.driveWhileDancing);
             float driveSpeed = settings.driveSpeed, driveRadius = settings.driveRadius;
             using (new EditorGUI.DisabledScope(!drive))
@@ -601,6 +602,7 @@ namespace MmdWorld.EditorTools
                 settings.slotCount = slots;
                 settings.countdownSeconds = countdown;
                 settings.vrHeadFollowsDance = headFollows;
+                settings.faceOverFx = faceOverFx;
                 settings.driveWhileDancing = drive;
                 settings.driveSpeed = driveSpeed;
                 settings.driveRadius = driveRadius;

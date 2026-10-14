@@ -79,6 +79,7 @@ namespace MmdWorld.EditorTools
             var settings = MmdWorldSettings.LoadOrCreate();
             _slotCount = Mathf.Clamp(settings.slotCount, 1, 16);
             _headFollowsDance = settings.vrHeadFollowsDance;
+            _faceOverFx = settings.faceOverFx;
             // 曲になっていない .vmd から曲を作るのは、マネージャーで入れたときだけ（以前は Assets の下を全部探していて、購入物の .vmd まで勝手に曲になった）
             if (settings.autoAddSongs) CreateMissingSongs(settings);
             // 表情だけ・カメラの .vmd を曲にしたもの、区切りが無い（短すぎる）ものは飛ばす
@@ -273,6 +274,8 @@ namespace MmdWorld.EditorTools
             dance.iKOnFeet = true;
             // VR の視点はアバターの頭に付くので、頭も踊りに合わせると、振り付けの頭の動きで視点が揺れる。切り替えで頭だけトラッキングのままにできる
             AddTrackingControl(dance, "Animation", _headFollowsDance ? null : "trackingHead");
+            // アバターの FX レイヤーが表情を上書きする作りでも表情が動くように、座っている間は FX の重みを 0 にする（設定で切れる）
+            if (_faceOverFx) AddFxWeight(dance, 0f);
             sm.defaultState = dance;
             return controller;
         }
@@ -290,8 +293,32 @@ namespace MmdWorld.EditorTools
             var restore = sm.AddState("Restore");
             restore.writeDefaultValues = false;
             AddTrackingControl(restore, "Tracking");
+            // 踊りで FX の重みを 0 にしていたら戻す（していなくても 1 にするだけなので害は無い）
+            AddFxWeight(restore, 1f);
             sm.defaultState = restore;
             return controller;
+        }
+
+        /// <summary>踊っている間、アバターの FX レイヤーを止めて、ステーションのクリップの表情を出すか（MmdWorldSettings.faceOverFx）。</summary>
+        static bool _faceOverFx;
+
+        /// <summary>
+        /// state に VRC Playable Layer Control を付け、アバターの FX レイヤーの重みを weight にする（アバターの SDK の部品。無ければ何もしない）。
+        /// FX が表情のシェイプキーを書く（Write Defaults などで）アバターでは、ステーションのクリップの表情が FX に上書きされて動かない。
+        /// 座っている間は FX を止め、降りる前に座り直す Controller で戻す。FX にある服の切り替えなども、踊っている間は止まる。
+        /// </summary>
+        static void AddFxWeight(AnimatorState state, float weight)
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl"))
+                .FirstOrDefault(t => t != null);
+            if (type == null) return;
+            var behaviour = state.AddStateMachineBehaviour(type);
+            var layer = type.GetField("layer");
+            if (layer != null) layer.SetValue(behaviour, Enum.Parse(layer.FieldType, "FX"));
+            type.GetField("goalWeight")?.SetValue(behaviour, weight);
+            type.GetField("blendDuration")?.SetValue(behaviour, 0f);
+            EditorUtility.SetDirty(behaviour);
         }
 
         static Type FindTrackingControlType() => AppDomain.CurrentDomain.GetAssemblies()

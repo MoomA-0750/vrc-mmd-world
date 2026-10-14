@@ -126,6 +126,9 @@ namespace MmdWorld.EditorTools
             var segmentControllers = new List<RuntimeAnimatorController>();
             var inPlaceControllers = new List<RuntimeAnimatorController>();
             var trackSegmentStart = new List<int>();
+            // 遅れを取り戻す版: 区切りの時刻から CatchUpStep 秒ずつ先から始まる Controller（座った合図が遅れて届いても、届いた時刻に合う版で踊り始める）
+            var lagControllers = new List<RuntimeAnimatorController>();
+            var lagInPlaceControllers = new List<RuntimeAnimatorController>();
             for (int t = 0; t < trackClips.Count; t++)
             {
                 trackSegmentStart.Add(segmentControllers.Count);
@@ -134,9 +137,14 @@ namespace MmdWorld.EditorTools
                 {
                     segmentControllers.Add(BuildStationController(fullClips[t], t, k, times[k], ""));
                     inPlaceControllers.Add(BuildStationController(inPlaceClips[t], t, k, times[k], "_InPlace"));
+                    for (int v = 1; v < CatchUpVariants; v++)
+                    {
+                        lagControllers.Add(BuildStationController(fullClips[t], t, k, times[k] + v * CatchUpStep, $"_Lag{v}"));
+                        lagInPlaceControllers.Add(BuildStationController(inPlaceClips[t], t, k, times[k] + v * CatchUpStep, $"_InPlace_Lag{v}"));
+                    }
                 }
             }
-            Debug.Log($"[MmdWorld] ステーション用の Controller {segmentControllers.Count} 個 × 2（移動あり・その場）（区切り: {string.Join(" / ", segments.Select(g => g.Count + " 個"))}、" +
+            Debug.Log($"[MmdWorld] ステーション用の Controller {segmentControllers.Count} 個 × 2（移動あり・その場）× 遅れを取り戻す版 {CatchUpVariants}（区切り: {string.Join(" / ", segments.Select(g => g.Count + " 個"))}、" +
                       $"パート: {string.Join(" / ", songPartCount.Select(n => n + " 人"))}）");
             var previewController = BuildPreviewController(fullClips);
             var mannequinMaterial = LoadOrCreateMaterial(GeneratedDir + "/Mannequin.mat", new Color(0.85f, 0.85f, 0.9f));
@@ -190,6 +198,10 @@ namespace MmdWorld.EditorTools
             system.segmentTimes = segments.SelectMany(g => g).ToArray();
             system.segmentControllers = segmentControllers.ToArray();
             system.inPlaceControllers = inPlaceControllers.ToArray();
+            system.lagControllers = lagControllers.ToArray();
+            system.lagInPlaceControllers = lagInPlaceControllers.ToArray();
+            system.catchUpStep = CatchUpStep;
+            system.catchUpVariants = CatchUpVariants;
             system.segmentStart = segments.Select((g, i) => segments.Take(i).Sum(x => x.Count)).ToArray();
             system.segmentCount = segments.Select(g => g.Count).ToArray();
             system.slots = slots.ToArray();
@@ -230,6 +242,10 @@ namespace MmdWorld.EditorTools
 
         // ---- 曲ごとのアニメーター ----
 
+        /// <summary>遅れを取り戻す版の間隔（秒）と、0 秒の版も含めた数（0, 0.25, 0.5, 0.75, 1.0 秒）。</summary>
+        public const float CatchUpStep = 0.25f;
+        public const int CatchUpVariants = 5;
+
         /// <summary>曲 index の、時刻 startTime から踊り始めるステーション用の Controller。</summary>
         static AnimatorController BuildStationController(AnimationClip clip, int track, int segment, float startTime, string suffix)
         {
@@ -240,7 +256,8 @@ namespace MmdWorld.EditorTools
             // 移動ありのクリップ（ふだん）か、移動を抜いたクリップ（「その場」の枠）
             dance.motion = clip;
             // 区切りの時刻から始める（座った瞬間にこのステートが始まる）
-            dance.cycleOffset = clip.length > 0f ? startTime / clip.length : 0f;
+            // （遅れを取り戻す版は曲の終わりを越えないようにする。越えるとループで曲の頭に戻る）
+            dance.cycleOffset = clip.length > 0f ? Mathf.Min(startTime, clip.length - 0.05f) / clip.length : 0f;
             dance.writeDefaultValues = false;
             // クリップには足の IK の目標（LeftFootT など）を焼いてあるので、体格の違うアバターでも足が MMD の位置に着く
             dance.iKOnFeet = true;

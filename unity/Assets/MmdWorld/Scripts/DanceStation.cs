@@ -13,17 +13,22 @@ namespace MmdWorld
     public class DanceStation : UdonSharpBehaviour
     {
         public DanceSystem system;
+        /// <summary>このクライアントから見て、誰かが座っているか（座っている間は Controller を差し替えない）</summary>
+        [System.NonSerialized] public bool occupied;
 
         public override void OnStationEntered(VRCPlayerApi player)
         {
             if (!Utilities.IsValid(player)) return;
+            occupied = true;
             Debug.Log("[MmdWorld] ステーションに入った: " + transform.parent.parent.name + " の " + gameObject.name + "（" + player.displayName + "）");
             if (player.isLocal && system != null) system._OnLocalStationEntered(GetComponent<VRCStation>());
+            else if (system != null) system._OnRemoteStationEntered(GetComponent<VRCStation>());
         }
 
         public override void OnStationExited(VRCPlayerApi player)
         {
             if (!Utilities.IsValid(player)) return;
+            occupied = false;
             Debug.Log("[MmdWorld] ステーションから出た: " + transform.parent.parent.name + " の " + gameObject.name + "（" + player.displayName + "）");
             if (player.isLocal && system != null) system._OnLocalStationExited(GetComponent<VRCStation>());
         }

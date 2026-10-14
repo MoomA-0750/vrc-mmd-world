@@ -85,6 +85,12 @@ namespace MmdWorld
         [Tooltip("segmentControllers と同じ並びの、移動を抜いたクリップの Controller（「その場」の枠が使う）")]
         public RuntimeAnimatorController[] inPlaceControllers;
         public int[] trackSegmentStart;
+        [Tooltip("遅れを取り戻す版: segmentControllers の区切りごとに、区切りの時刻から catchUpStep 秒ずつ先から始まる Controller（catchUpVariants - 1 個ずつ並ぶ）")]
+        public RuntimeAnimatorController[] lagControllers;
+        public RuntimeAnimatorController[] lagInPlaceControllers;
+        public float catchUpStep = 0.25f;
+        [Tooltip("遅れを取り戻す版の数（0 秒の版を含む）")]
+        public int catchUpVariants = 1;
 
         [Header("複数人のモーション（ワールドを組み立てるメニューが入れる）")]
         [Tooltip("曲ごとの、最初のトラックの番号とパートの数。1人の曲はパート1つ")]
@@ -112,8 +118,8 @@ namespace MmdWorld
 
         [Header("調整")]
         public float countdownSeconds = 3f;
-        [Tooltip("区切りをまたいでからこの秒数までなら、座って踊りに入る")]
-        public float lateSeatWindow = 0.5f;
+        [Tooltip("区切りをまたいでからこの秒数までなら、座って踊りに入る（遅れた分は、遅れを取り戻す版の Controller で合わせる）")]
+        public float lateSeatWindow = 1.1f;
         [Tooltip("音がこの秒数以上ずれたら合わせ直す")]
         public float audioResyncThreshold = 0.15f;
         [Tooltip("0 より大きいと、入ってからこの秒数後に自分で枠1に入って再生する。Build & Test の自動確認用で、普段は 0")]
@@ -821,29 +827,78 @@ namespace MmdWorld
         void UpdateSegment(int song, float t)
         {
             int k = t < 0f ? -1 : SegmentAt(song, t);
-            if (k == _currentSegment) return;
+            bool crossed = k != _currentSegment;
             _currentSegment = k;
             if (k < 0) return;
-            // 枠ごとに、その枠が踊るパートの Controller を両方のステーションに入れる（座っている人の踊りは、座り直すまで変わらない）
+            // 枠ごとに、その枠が踊るパートの Controller を両方のステーションに入れる（座っている人の踊りは、座り直すまで変わらない）。
+            // 区切りの頭から遅れた分に合う「遅れを取り戻す版」を、空いているステーションに毎フレーム入れておく。
+            // ステーションの踊りは、各自の手元で座った合図を受け取った瞬間に始まるので、合図が遅れて届いても、届いた時刻に合う版で踊り始める
+            int variant = LagVariant(t - SegmentTime(song, k));
             for (int s = 0; s < slots.Length; s++)
             {
                 var slot = slots[s];
                 if (slot == null) continue;
-                // 「その場」の枠は移動を抜いたクリップの Controller
-                int index = trackSegmentStart[TrackFor(song, s)] + k;
-                var controller = slot.IsInPlace() && inPlaceControllers != null && index < inPlaceControllers.Length ? inPlaceControllers[index] : segmentControllers[index];
+                var controller = StationController(TrackFor(song, s), k, variant, slot.IsInPlace());
+                if (controller == null) continue;
                 for (int i = 0; i < slot.StationCount(); i++)
                 {
                     var station = slot.GetStation(i);
-                    if (station != null) station.animatorController = controller;
+                    if (station == null || station.animatorController == controller) continue;
+                    if (!crossed && IsStationOccupied(s, i)) continue;
+                    station.animatorController = controller;
                 }
             }
             // 区切りの頭からあまり遅れていなければ、座っていない踊り手はここで座り、シークを受けた踊り手はもう一方へ乗り換える
-            // （遅れた分だけ踊りが音より遅れるので、遅すぎたら次の区切りを待つ）
-            if (t - SegmentTime(song, k) <= lateSeatWindow && (_localStation == null || _switchPending))
+            // （遅れた分は遅れを取り戻す版で合わせる。それより遅れたら次の区切りを待つ）
+            if (t - SegmentTime(song, k) <= lateSeatWindow && (_localStation == null || _switchPending) && IsLocalInAnySlot())
             {
                 _switchPending = false;
                 SeatLocalDancer(k);
+            }
+        }
+
+        /// <summary>区切りの頭からの遅れ（秒）に合う、遅れを取り戻す版の番号（0 なら区切りの時刻から始まる版）。</summary>
+        int LagVariant(float late)
+        {
+            if (catchUpVariants <= 1 || catchUpStep <= 0f || late <= 0f) return 0;
+            return Mathf.Clamp(Mathf.RoundToInt(late / catchUpStep), 0, catchUpVariants - 1);
+        }
+
+        /// <summary>トラック track の区切り k の、遅れを取り戻す版 variant の Controller（「その場」なら移動を抜いたもの）。</summary>
+        RuntimeAnimatorController StationController(int track, int k, int variant, bool inPlace)
+        {
+            int index = trackSegmentStart[track] + k;
+            if (variant > 0)
+            {
+                var lag = inPlace ? lagInPlaceControllers : lagControllers;
+                int at = index * (catchUpVariants - 1) + variant - 1;
+                if (lag != null && at < lag.Length && lag[at] != null) return lag[at];
+            }
+            if (inPlace && inPlaceControllers != null && index < inPlaceControllers.Length) return inPlaceControllers[index];
+            return index < segmentControllers.Length ? segmentControllers[index] : null;
+        }
+
+        /// <summary>このクライアントから見て、枠 slotIndex のステーション i に誰かが座っているか。</summary>
+        bool IsStationOccupied(int slotIndex, int i)
+        {
+            if (_stationScripts == null) CacheStationScripts();
+            int at = slotIndex * 2 + i;
+            return at < _stationScripts.Length && _stationScripts[at] != null && _stationScripts[at].occupied;
+        }
+
+        DanceStation[] _stationScripts;
+
+        void CacheStationScripts()
+        {
+            _stationScripts = new DanceStation[slots.Length * 2];
+            for (int s = 0; s < slots.Length; s++)
+            {
+                if (slots[s] == null) continue;
+                for (int i = 0; i < slots[s].StationCount() && i < 2; i++)
+                {
+                    var station = slots[s].GetStation(i);
+                    if (station != null) _stationScripts[s * 2 + i] = station.GetComponent<DanceStation>();
+                }
             }
         }
 
@@ -1024,6 +1079,16 @@ namespace MmdWorld
             Debug.Log("[MmdWorld] 座らせていないのにステーションに入ったので、降ろす: " + station.gameObject.name);
             _localStation = station;
             LeaveLocalStation();
+        }
+
+        /// <summary>DanceStation から: ほかの人がステーションに入ったのが届いた。区切りの頭から何秒遅れて届き、どの版の Controller で踊り始めたかをログに出す（遅れを取り戻せているかの確かめ）。</summary>
+        public void _OnRemoteStationEntered(VRCStation station)
+        {
+            if (!_playing || _songIndex < 0 || _songIndex >= SongCount()) return;
+            float t = CurrentTime();
+            int k = SegmentAt(_songIndex, t);
+            Debug.Log("[MmdWorld] ほかの人が座ったのが届いた: 区切り " + k + " の頭から " + (t - SegmentTime(_songIndex, k)).ToString("F2") + " 秒後、"
+                      + (station.animatorController != null ? station.animatorController.name : "Controller なし"));
         }
 
         /// <summary>DanceStation から: 自分がステーションから出た（リスポーンなど、こちらが降ろしたのでない場合も含む）。</summary>

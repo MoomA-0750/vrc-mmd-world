@@ -221,6 +221,22 @@ namespace MmdWorld.EditorTools
                 Check(system.segmentControllers.Length == segTotal && system.segmentControllers.All(c => c != null), $"区切り × パートの数だけ Controller がある: {system.segmentControllers.Length}");
                 Check(system.inPlaceControllers.Length == segTotal && system.inPlaceControllers.All(c => c != null) && system.inPlaceControllers[0] != system.segmentControllers[0],
                       "「その場」用の Controller も同じ数だけある（移動ありとは別）");
+                {
+                    // 遅れを取り戻す版: 区切りごとに、区切りの時刻から 0.25 秒ずつ先から始まる（曲の終わりは越えない）
+                    int lagPer = WorldBuilder.CatchUpVariants - 1;
+                    var seg1 = system.segmentControllers[1] as UnityEditor.Animations.AnimatorController;
+                    var lag2 = system.lagControllers.Length > 1 * lagPer + 1 ? system.lagControllers[1 * lagPer + 1] as UnityEditor.Animations.AnimatorController : null;
+                    var s1 = seg1 != null ? seg1.layers[0].stateMachine.defaultState : null;
+                    var l2 = lag2 != null ? lag2.layers[0].stateMachine.defaultState : null;
+                    float length = s1 != null && s1.motion != null ? ((AnimationClip)s1.motion).length : 0f;
+                    float diff = s1 != null && l2 != null ? (l2.cycleOffset - s1.cycleOffset) * length : -1f;
+                    Check(system.lagControllers.Length == segTotal * lagPer && system.lagInPlaceControllers.Length == segTotal * lagPer
+                          && system.lagControllers.All(c => c != null) && system.catchUpVariants == WorldBuilder.CatchUpVariants
+                          && Mathf.Abs(diff - 2 * WorldBuilder.CatchUpStep) < 0.01f && l2.motion == s1.motion,
+                          $"遅れを取り戻す版の Controller が区切りごとに {lagPer} 個あり、0.25 秒ずつ先から始まる（2つ目の版は {diff:F3} 秒先）");
+                    Check(system.lagControllers.Concat(system.lagInPlaceControllers).Cast<UnityEditor.Animations.AnimatorController>()
+                          .All(c => c.layers[0].stateMachine.defaultState.cycleOffset < 1f), "遅れを取り戻す版は曲の終わりを越えない");
+                }
                 int timesTotal = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
                 Check(system.segmentCount.Length == songCount && system.segmentTimes.Length == timesTotal && system.segmentTimes[system.segmentStart.Last()] == 0f, "区切りの表が曲ごとに 0 秒から並ぶ");
                 Check(Mathf.Approximately(system.countdownSeconds, 5f), "カウントダウンの秒数が入る");

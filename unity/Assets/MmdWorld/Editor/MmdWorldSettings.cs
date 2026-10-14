@@ -27,6 +27,15 @@ namespace MmdWorld.EditorTools
         [Tooltip("VR で踊っているとき、頭も踊りに合わせるか（初期は入れる）。今は、入れると振り付けの頭の動きで視点も揺れる。切ると、頭（視点）はヘッドセットのまま、体だけ踊る")]
         public bool vrHeadFollowsDance = true;
 
+        [Tooltip("踊っている間も、スティック・WASD で自分の枠ごと動けるようにするか（初期は入れる）。動いた分は全員に同期され、VR の視点も一緒に動く")]
+        public bool driveWhileDancing = true;
+
+        [Tooltip("踊りながら動く速さ（メートル/秒）")]
+        [Range(0.2f, 4f)] public float driveSpeed = 1.5f;
+
+        [Tooltip("踊りながら、枠の位置からどこまで離れられるか（メートル）")]
+        [Range(0.5f, 10f)] public float driveRadius = 4f;
+
         [Tooltip("組み立てのとき、まだ曲になっていない .vmd を autoAddFolder の下から探して、曲を自動で作るか。切っておけば、マネージャーで足した曲だけになる")]
         public bool autoAddSongs;
 

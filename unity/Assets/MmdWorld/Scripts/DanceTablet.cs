@@ -285,12 +285,18 @@ namespace MmdWorld
 
         public override void InputMoveHorizontal(float value, UdonInputEventArgs args)
         {
-            if (_visible && Mathf.Abs(value) > hideOnMove) SetVisible(false);
+            if (_visible && Mathf.Abs(value) > hideOnMove && !DrivingWhileDancing()) SetVisible(false);
         }
 
         public override void InputMoveVertical(float value, UdonInputEventArgs args)
         {
-            if (_visible && Mathf.Abs(value) > hideOnMove) SetVisible(false);
+            if (_visible && Mathf.Abs(value) > hideOnMove && !DrivingWhileDancing()) SetVisible(false);
+        }
+
+        /// <summary>踊りながら動ける（ワールドの設定）うえで、いま踊っているか。そのときは、スティック・WASD は枠ごと動くのに使うので、タブレットは消さない。</summary>
+        bool DrivingWhileDancing()
+        {
+            return system != null && system.driveWhileDancing && system.GetLocalStationRoot() != null;
         }
 
         public void Hide()
@@ -434,7 +440,7 @@ namespace MmdWorld
             if (Input.GetKeyDown(desktopToggleKey)) Toggle();
             if (!_visible) return;
             // 座っている間は VRChat が移動のイベントを渡さないことがあるので、WASD も直接見る
-            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D))
+            if ((Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D)) && !DrivingWhileDancing())
             {
                 SetVisible(false);
                 return;

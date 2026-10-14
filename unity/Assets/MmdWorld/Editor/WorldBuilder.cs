@@ -211,6 +211,9 @@ namespace MmdWorld.EditorTools
             system.slotAvatars = slotAvatars.ToArray();
             system.slotAvatarNames = slotAvatars.Select(a => a.name).ToArray();
             system.countdownSeconds = settings.countdownSeconds;
+            system.driveWhileDancing = settings.driveWhileDancing;
+            system.driveSpeed = settings.driveSpeed;
+            system.driveRadius = settings.driveRadius;
             system.titleText = panelUi.title;
             system.statusText = panelUi.status;
             system.tabletTitleText = tabletUi.title;

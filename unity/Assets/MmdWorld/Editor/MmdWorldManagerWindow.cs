@@ -588,17 +588,27 @@ namespace MmdWorld.EditorTools
             int slots = EditorGUILayout.IntSlider("踊る人の枠", settings.slotCount, 1, 16);
             float countdown = EditorGUILayout.Slider("カウントダウン（秒）", settings.countdownSeconds, 0f, 10f);
             bool headFollows = EditorGUILayout.Toggle(new GUIContent("VR で頭も踊りに合わせる", "入れると頭も振り付けどおりに動く（今は視点も一緒に揺れる）。切ると、頭（視点）はヘッドセットのまま、体だけ踊る"), settings.vrHeadFollowsDance);
+            bool drive = EditorGUILayout.Toggle(new GUIContent("踊りながら動ける", "踊っている間も、スティック・WASD で自分の枠ごと動ける。動いた分は全員に同期され、VR の視点も一緒に動く。止めると枠に戻る"), settings.driveWhileDancing);
+            float driveSpeed = settings.driveSpeed, driveRadius = settings.driveRadius;
+            using (new EditorGUI.DisabledScope(!drive))
+            {
+                driveSpeed = EditorGUILayout.Slider("　動く速さ（m/秒）", settings.driveSpeed, 0.2f, 4f);
+                driveRadius = EditorGUILayout.Slider("　枠から離れられる距離（m）", settings.driveRadius, 0.5f, 10f);
+            }
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(settings, "ワールドの設定");
                 settings.slotCount = slots;
                 settings.countdownSeconds = countdown;
                 settings.vrHeadFollowsDance = headFollows;
+                settings.driveWhileDancing = drive;
+                settings.driveSpeed = driveSpeed;
+                settings.driveRadius = driveRadius;
                 Save(settings);
             }
             DrawDetect(settings);
-            int controllers = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
-            EditorGUILayout.LabelField($"ステーション {slots} 個（枠ごとに1つ）、ステーション用の Controller {controllers} 個（曲 × 区切り）", EditorStyles.miniLabel);
+            int controllers = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count * MmdWorldLibrary.Parts(sg).Count) * 2 * WorldBuilder.CatchUpVariants;
+            EditorGUILayout.LabelField($"ステーション {slots * 2} 個（枠ごとに2つ）、ステーション用の Controller {controllers} 個（区切り × パート × その場 × 遅れを取り戻す版 {WorldBuilder.CatchUpVariants}）", EditorStyles.miniLabel);
 
             EditorGUILayout.Space(6);
             if (GUILayout.Button("ワールドを組み立て直す", GUILayout.Height(32)))

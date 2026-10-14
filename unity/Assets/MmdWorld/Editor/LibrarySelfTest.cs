@@ -240,6 +240,8 @@ namespace MmdWorld.EditorTools
                 int timesTotal = MmdWorldLibrary.Songs().Sum(sg => MmdWorldLibrary.Segments(sg).Count);
                 Check(system.segmentCount.Length == songCount && system.segmentTimes.Length == timesTotal && system.segmentTimes[system.segmentStart.Last()] == 0f, "区切りの表が曲ごとに 0 秒から並ぶ");
                 Check(Mathf.Approximately(system.countdownSeconds, 5f), "カウントダウンの秒数が入る");
+                Check(system.driveWhileDancing == settings.driveWhileDancing && Mathf.Approximately(system.driveSpeed, settings.driveSpeed)
+                      && Mathf.Approximately(system.driveRadius, settings.driveRadius), "踊りながら動く設定（入れるか・速さ・距離）がワールドに入る");
                 Check(system.songTitles.Contains("自己テスト/曲:1"), "足した曲がパネルの曲に入る");
                 int expectedSlotAvatars = local != null ? 2 : 1;
                 Check(system.slotAvatars.Length == expectedSlotAvatars && system.slotAvatarNames.Length == expectedSlotAvatars, "枠で踊らせるアバターが置かれる（重複は1体）: " + system.slotAvatars.Length);

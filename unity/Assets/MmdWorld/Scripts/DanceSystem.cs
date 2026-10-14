@@ -189,8 +189,18 @@ namespace MmdWorld
             if (autoTestDelay > 0f) SendCustomEventDelayedSeconds(nameof(_AutoTest), autoTestDelay);
         }
 
+        int _autoTestWaits;
+
         public void _AutoTest()
         {
+            // 2つのクライアントで試すときは、見る側が入ってくるまで（2分まで）待ってから始める（遅れを取り戻す・権限の確かめは、見る側がいないと意味が無い）
+            if (autoTestViewPoint != null && Networking.IsMaster && VRCPlayerApi.GetPlayerCount() < 2 && _autoTestWaits < 24)
+            {
+                if (_autoTestWaits == 0) Debug.Log("[MmdWorld] 自動確認: 見る側が入ってくるのを待つ");
+                _autoTestWaits++;
+                SendCustomEventDelayedSeconds(nameof(_AutoTest), 5f);
+                return;
+            }
             _AutoTestLogPosition();
             // 複数のクライアントで試すときは、最初に入った人だけが踊る。ほかの人は枠1の正面から見る
             if (!Networking.IsMaster)

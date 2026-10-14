@@ -122,6 +122,12 @@ namespace MmdWorld.EditorTools
                 Check(song.title == "自己テスト/曲:1", "題名はそのまま残る");
                 Check(MmdWorldLibrary.Songs().Last() == song, "新しい曲は最後に並ぶ");
 
+                // Android での音声の大きさの目安: 同じ音声の曲を2つ数えても1つ分。品質がいちばん高くても 1 分あたり 2MB 未満
+                float one = MmdWorldLibrary.AndroidAudioMegabytes(new[] { song });
+                float twice = MmdWorldLibrary.AndroidAudioMegabytes(new[] { song, song });
+                Check(one > 0f && Mathf.Approximately(one, twice) && one < song.audio.length / 60f * 2f,
+                      $"Android での音声の大きさの目安が出る（{one:F2} MB、同じ音声は1つに数える）");
+
                 MmdWorldLibrary.Move(song, -1);
                 Check(MmdWorldLibrary.Songs().IndexOf(song) == before - 1, "▲で1つ前へ動く");
 

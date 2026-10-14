@@ -301,6 +301,38 @@ namespace MmdWorld.EditorTools
         public static (float motion, float audio) Lengths(DanceSong song) =>
             (song.motion != null ? song.motion.length : 0f, song.audio != null ? song.audio.length : 0f);
 
+        /// <summary>Android（Quest・スマホ）のワールドの大きさの上限（ビルド後の圧縮した大きさ、MB）。</summary>
+        public const float AndroidWorldLimitMB = 100f;
+
+        /// <summary>曲の音声の合計がこれを超えたら注意を出す（MB）。音声のほかに、ステージ・アバター・モーションも上限に入るため。</summary>
+        public const float AndroidAudioWarnMB = 70f;
+
+        /// <summary>
+        /// 曲の音声を Android 向けに取り込んだときの大きさの合計の目安（MB）。同じ音声を使う曲は1つに数える。
+        /// Vorbis の品質から1秒あたりのビット数を見積もる（品質 0.6 のステレオで 160kbps）。正確な大きさは BuildOnly で測る。
+        /// </summary>
+        public static float AndroidAudioMegabytes(IEnumerable<DanceSong> songs)
+        {
+            double bytes = 0;
+            foreach (var clip in songs.Where(s => s != null && s.audio != null).Select(s => s.audio).Distinct())
+            {
+                var importer = AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(clip)) as AudioImporter;
+                float quality = 0.6f;
+                bool vorbis = true;
+                if (importer != null)
+                {
+                    var settings = importer.ContainsSampleSettingsOverride("Android") ? importer.GetOverrideSampleSettings("Android") : importer.defaultSampleSettings;
+                    quality = settings.quality;
+                    vorbis = settings.compressionFormat == AudioCompressionFormat.Vorbis;
+                }
+                // Vorbis 以外（PCM・ADPCM）は、16bit の PCM を ADPCM で 1/3.5 にした大きさで見積もる
+                double kbps = vorbis ? (32 + 213 * quality) * (clip.channels >= 2 ? 1 : 0.5)
+                    : clip.frequency * 16.0 * clip.channels / 1000 / 3.5;
+                bytes += clip.length * kbps * 1000 / 8;
+            }
+            return (float)(bytes / 1024 / 1024);
+        }
+
         /// <summary>
         /// モデルが Humanoid か、表情のメッシュ（Body）があるか、曲の表情のうちいくつがそのモデルにあるか。
         /// お手本や着替えの台に使うアバターで、表情まで動くかの目安にする。

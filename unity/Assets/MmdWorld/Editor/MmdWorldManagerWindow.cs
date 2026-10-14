@@ -58,6 +58,7 @@ namespace MmdWorld.EditorTools
         void DrawSongs(List<DanceSong> songs)
         {
             EditorGUILayout.LabelField($"曲（{songs.Count}）", EditorStyles.boldLabel);
+            DrawAndroidSize(songs);
             DrawDropArea();
             DrawExport(songs);
 
@@ -150,6 +151,22 @@ namespace MmdWorld.EditorTools
                 }
             }
             if (GUI.changed) AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>
+        /// 曲の音声の、Android（Quest・スマホ）での大きさの合計の目安を出す。曲数では止めず、ワールドの上限に近づいたら注意、超えたら警告にする（決定 2026-10-14）。
+        /// </summary>
+        void DrawAndroidSize(List<DanceSong> songs)
+        {
+            float mb = MmdWorldLibrary.AndroidAudioMegabytes(songs);
+            string text = $"曲の音声の合計（Quest・スマホでの目安）: {mb:F0} MB。Android のワールドは全体で {MmdWorldLibrary.AndroidWorldLimitMB:F0} MB まで（ステージ・アバター・モーションも含む）。" +
+                          "正確な大きさは、Android に切り替えて BuildOnly で測れます。";
+            if (mb >= MmdWorldLibrary.AndroidWorldLimitMB)
+                EditorGUILayout.HelpBox(text + "\n音声だけで上限を超えています。このままでは Quest・スマホ向けにアップロードできません。曲を減らすか、音声の品質を下げてください。", MessageType.Error);
+            else if (mb >= MmdWorldLibrary.AndroidAudioWarnMB)
+                EditorGUILayout.HelpBox(text + "\n上限に近づいています。", MessageType.Warning);
+            else
+                EditorGUILayout.LabelField(text, EditorStyles.wordWrappedMiniLabel);
         }
 
         // フォルダから見つけた曲の候補（「フォルダから曲を探す」を押したときに作り、登録するかやめるまで出す）
